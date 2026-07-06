@@ -34,16 +34,7 @@ jobs:
       - name: Build Windows portable app
         shell: pwsh
         run: |
-          pyinstaller --clean --noconfirm --windowed `
-            --name StankyTools `
-            --hidden-import PySide6.QtWebEngineWidgets `
-            --hidden-import PySide6.QtWebEngineCore `
-            --collect-submodules PySide6.QtCore `
-            --collect-submodules PySide6.QtGui `
-            --collect-submodules PySide6.QtWidgets `
-            --add-data "assets;assets" `
-            --add-data "data;data" `
-            main.py
+          pyinstaller --clean --noconfirm StankyTools.spec
 
       - name: Package portable ZIP
         shell: pwsh

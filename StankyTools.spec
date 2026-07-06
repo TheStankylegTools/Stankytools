@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('assets', 'assets'), ('data', 'data')]
 binaries = []
-hiddenimports = []
+hiddenimports = ['PySide6.QtWebEngineWidgets', 'PySide6.QtWebEngineCore']
 tmp_ret = collect_all('PySide6')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
