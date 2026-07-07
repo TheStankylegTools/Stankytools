@@ -524,6 +524,7 @@ class LiveDeepDesertView(QWidget):
             self.web = QWebEngineView(self)
             if QWebEnginePage is not None:
                 self.web.setPage(QuietWebEnginePage(self.web))
+            self.web.loadFinished.connect(self._focus_method_map)
             self.web.setUrl(QUrl(METHOD_DEEP_DESERT_URL))
             layout.addWidget(self.web, 1)
         else:
@@ -539,6 +540,130 @@ class LiveDeepDesertView(QWidget):
             box.addWidget(open_browser, alignment=Qt.AlignCenter)
             box.addStretch()
             layout.addWidget(fallback, 1)
+
+    def _focus_method_map(self, ok: bool = True):
+        """Crop Method.gg to the useful Deep Desert grid + Map Filters area."""
+        if not ok or self.web is None:
+            return
+        js = r"""
+(function focusMethodDeepDesert(){
+  const STYLE_ID = 'stankytools-focused-map-style';
+  function addStyle(){
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #1b1b1b !important;
+        overflow: hidden !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+      #stankytools-map-stage {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 2147483647 !important;
+        background: #1b1b1b !important;
+        overflow: auto !important;
+        padding: 0 0 14px 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+      }
+      #stankytools-map-stage * { box-sizing: border-box !important; }
+      #stankytools-map-stage img,
+      #stankytools-map-stage canvas,
+      #stankytools-map-stage svg { max-width: none !important; }
+      header, footer, nav, aside,
+      [role='banner'], [role='navigation'],
+      .ad, .ads, .advertisement, .cookie, .cookie-banner,
+      [id*='ad-'], [class*='ad-'], [class*='advert'],
+      iframe[src*='googlesyndication'], iframe[src*='doubleclick'] {
+        display: none !important;
+        visibility: hidden !important;
+      }`;
+    document.head.appendChild(style);
+  }
+  function visible(el){
+    if (!el || el.nodeType !== 1) return false;
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width > 40 && r.height > 20 && st.display !== 'none' && st.visibility !== 'hidden';
+  }
+  function findTextNode(text){
+    const wanted = text.toLowerCase();
+    const nodes = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,div,span,p,strong,b'));
+    return nodes.find(el => visible(el) && (el.innerText || '').trim().toLowerCase().includes(wanted));
+  }
+  function bestMapElement(beforeY){
+    const candidates = Array.from(document.querySelectorAll('canvas,svg,img,div'));
+    let best = null;
+    let bestScore = 0;
+    for (const el of candidates){
+      if (!visible(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (beforeY && r.top > beforeY + 90) continue;
+      const text = (el.innerText || '').toLowerCase();
+      const hasGridLabels = /\b(a|b|c|d|e|f|g|h|i)\b/.test(text) && /\b1\b/.test(text) && /\b9\b/.test(text);
+      const score = (r.width * r.height) + (hasGridLabels ? 900000 : 0);
+      if (r.width >= 450 && r.height >= 300 && score > bestScore){
+        best = el;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+  function usefulAncestor(el, minW, minH){
+    let cur = el;
+    let best = el;
+    while (cur && cur !== document.body){
+      const r = cur.getBoundingClientRect();
+      if (r.width >= minW && r.height >= minH && r.width < window.innerWidth * 1.8){
+        best = cur;
+      }
+      cur = cur.parentElement;
+    }
+    return best;
+  }
+  function focus(){
+    addStyle();
+    const filtersText = findTextNode('MAP FILTERS');
+    const beforeY = filtersText ? filtersText.getBoundingClientRect().top : 99999;
+    const mapNode = bestMapElement(beforeY);
+    if (!mapNode) return false;
+    const mapBlock = usefulAncestor(mapNode, 500, 320);
+    const filtersBlock = filtersText ? usefulAncestor(filtersText, 300, 50) : null;
+    let stage = document.getElementById('stankytools-map-stage');
+    if (!stage){
+      stage = document.createElement('div');
+      stage.id = 'stankytools-map-stage';
+      document.body.appendChild(stage);
+    }
+    stage.innerHTML = '';
+    mapBlock.style.margin = '0';
+    mapBlock.style.transformOrigin = 'top left';
+    mapBlock.style.maxWidth = 'none';
+    mapBlock.style.width = 'fit-content';
+    stage.appendChild(mapBlock);
+    if (filtersBlock && filtersBlock !== mapBlock && !mapBlock.contains(filtersBlock)){
+      filtersBlock.style.margin = '10px 0 0 10px';
+      filtersBlock.style.maxWidth = 'none';
+      filtersBlock.style.width = 'fit-content';
+      stage.appendChild(filtersBlock);
+    }
+    window.scrollTo(0,0);
+    return true;
+  }
+  let tries = 0;
+  const timer = setInterval(() => {
+    tries += 1;
+    if (focus() || tries > 20) clearInterval(timer);
+  }, 500);
+})();
+"""
+        self.web.page().runJavaScript(js)
 
     def reload(self):
         if self.web is not None:
