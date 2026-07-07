@@ -574,6 +574,7 @@ def add_poi(
     guild_code: str = "",
     poi_type: str = "Custom",
     created_by: str = "",
+    status: str = "active",
 ) -> int:  # type: ignore[no-redef]
     label = label.strip()
     if not label:
@@ -583,8 +584,8 @@ def add_poi(
         cur = conn.execute(
             """
             INSERT INTO deep_desert_pois
-                (map_key, x, y, label, note, guild_code, poi_type, created_by, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                (map_key, x, y, label, note, guild_code, poi_type, created_by, status, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 map_key,
@@ -595,6 +596,7 @@ def add_poi(
                 guild_code.strip(),
                 (poi_type or "Custom").strip(),
                 created_by.strip(),
+                (status or "active").strip().lower(),
             ),
         )
         conn.commit()
@@ -615,6 +617,7 @@ def upsert_remote_poi(
     created_by: str = "",
     last_updated_by: str = "",
     pooped_on: bool = False,
+    status: str = "active",
 ) -> None:
     remote_id = str(remote_id or "").strip()
     if not remote_id:
@@ -626,7 +629,7 @@ def upsert_remote_poi(
             conn.execute(
                 """
                 UPDATE deep_desert_pois
-                SET x=?, y=?, label=?, note=?, guild_code=?, poi_type=?, created_by=?, last_updated_by=?, pooped_on=?, updated_at=CURRENT_TIMESTAMP
+                SET x=?, y=?, label=?, note=?, guild_code=?, poi_type=?, created_by=?, last_updated_by=?, pooped_on=?, status=?, archived_at=CASE WHEN ? IN ('defeated','gone') THEN COALESCE(NULLIF(archived_at, ''), CURRENT_TIMESTAMP) ELSE '' END, updated_at=CURRENT_TIMESTAMP
                 WHERE remote_id=?
                 """,
                 (
@@ -639,6 +642,8 @@ def upsert_remote_poi(
                     created_by.strip(),
                     (last_updated_by or created_by).strip(),
                     1 if pooped_on else 0,
+                    (status or "active").strip().lower(),
+                    (status or "active").strip().lower(),
                     remote_id,
                 ),
             )
@@ -646,8 +651,8 @@ def upsert_remote_poi(
             conn.execute(
                 """
                 INSERT INTO deep_desert_pois
-                    (map_key, x, y, label, note, guild_code, remote_id, poi_type, created_by, last_updated_by, pooped_on, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    (map_key, x, y, label, note, guild_code, remote_id, poi_type, created_by, last_updated_by, pooped_on, status, archived_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? IN ('defeated','gone') THEN CURRENT_TIMESTAMP ELSE '' END, CURRENT_TIMESTAMP)
                 """,
                 (
                     map_key,
@@ -661,6 +666,8 @@ def upsert_remote_poi(
                     created_by.strip(),
                     (last_updated_by or created_by).strip(),
                     1 if pooped_on else 0,
+                    (status or "active").strip().lower(),
+                    (status or "active").strip().lower(),
                 ),
             )
         conn.commit()

@@ -1343,8 +1343,9 @@ class NativeDeepDesertCanvas(QWidget):
         painter.setBrush(QBrush(color))
         painter.drawEllipse(rect)
         painter.setPen(QColor("#090909"))
-        font = painter.font(); font.setPointSize(11 if selected else 10); font.setBold(True); painter.setFont(font)
-        painter.drawText(rect, Qt.AlignCenter, "◆")
+        font = painter.font(); font.setPointSize(13 if selected else 12); font.setBold(True); painter.setFont(font)
+        marker_text = "✕" if (status or "").lower() == "enemy" else ("✓" if (status or "").lower() == "friendly" else "◆")
+        painter.drawText(rect, Qt.AlignCenter, marker_text)
         if self.zoom_factor >= 1.20 or selected:
             text = f"{label[:24]} • {poi_status_label(status)}"
             label_rect = QRectF(sx + size / 2 + 8, sy - 15, max(150, len(text) * 7 + 24), 31)
@@ -4157,7 +4158,7 @@ class MainWindow(QMainWindow):
             type_item.setData(Qt.UserRole, (poi_type or "Custom").lower())
             type_item.setData(Qt.UserRole + 10, poi_id)
 
-            tactical_status = poi_tactical_status(poi_type or "Custom", pooped)
+            tactical_status = poi_tactical_status(poi_type or "Custom", pooped, str(row["status"]) if "status" in row.keys() else "")
             status_item = QTableWidgetItem(poi_status_label(tactical_status))
             status_item.setData(Qt.UserRole, tactical_status)
             status_item.setData(Qt.UserRole + 10, poi_id)
@@ -4727,15 +4728,38 @@ class MainWindow(QMainWindow):
             pass
         self.notify(title, message, "success")
 
+
+    def refresh_current_member_role(self) -> str:
+        """Pull this user's current role from Supabase so promotions unlock Guild Admin immediately after sync."""
+        url, key = active_supabase()
+        guild = db.get_setting("guild_code", "").upper()
+        display_name = db.get_setting("display_name", "").strip()
+        if not url or not key or not guild or not display_name or "PASTE_" in key:
+            return db.get_setting("guild_role", "member") or "member"
+        try:
+            rows = supabase_request("GET", url, key, f"guild_members?guild_code=eq.{urllib.parse.quote(guild)}&display_name=eq.{urllib.parse.quote(display_name)}&select=role&limit=1")
+            if rows:
+                role = (rows[0].get("role") or "member").lower()
+                db.set_setting("guild_role", role)
+                safe_label_set_text(getattr(self, "guild_role_label", None), "Role: " + role)
+                self.update_guild_nav_visibility()
+                self.update_sidebar_status()
+                return role
+        except Exception:
+            pass
+        return db.get_setting("guild_role", "member") or "member"
+
     def manual_guild_sync_from_dashboard(self):
         if not db.get_setting("guild_code", "").strip() or not db.get_setting("display_name", "").strip():
             self.notify("Guild Sync", "Join or create a guild first.", "warning")
             return
         self.notify("Guild Sync", "Sync started.", "info")
         try:
+            self.refresh_current_member_role()
             self.sync_guild_pois(show_popup=False)
             self.sync_guild_bases(show_popup=False)
             self.sync_guild_dashboard_content(show_errors=False)
+            self.refresh_current_member_role()
             self.sync_guild_logo_from_remote()
             self.refresh_all()
             self.notify("Guild Synced", "Guild data synced successfully.", "success")
@@ -4800,18 +4824,22 @@ class MainWindow(QMainWindow):
             return
         try:
             self._sync_running = True
-            # Keep member presence/role fresh.
+            # Keep current user's role fresh without overwriting an owner/officer
+            # promotion from another client with stale local "member" data.
             try:
-                supabase_request("POST", url, key, "guild_members?on_conflict=guild_code,display_name", [{
-                    "guild_code": guild,
-                    "display_name": display_name,
-                    "role": db.get_setting("guild_role", "member") or "member",
-                }])
                 role_rows = supabase_request("GET", url, key, f"guild_members?guild_code=eq.{urllib.parse.quote(guild)}&display_name=eq.{urllib.parse.quote(display_name)}&select=role&limit=1")
-                role = (role_rows[0].get("role") if role_rows else db.get_setting("guild_role", "member")) or "member"
-                db.set_setting("guild_role", role)
-                if hasattr(self, "guild_role_label"):
-                    self.guild_role_label.setText("Role: " + role)
+                if role_rows:
+                    role = (role_rows[0].get("role") or "member").lower()
+                    db.set_setting("guild_role", role)
+                    if hasattr(self, "guild_role_label"):
+                        self.guild_role_label.setText("Role: " + role)
+                    self.update_guild_nav_visibility()
+                else:
+                    supabase_request("POST", url, key, "guild_members?on_conflict=guild_code,display_name", [{
+                        "guild_code": guild,
+                        "display_name": display_name,
+                        "role": db.get_setting("guild_role", "member") or "member",
+                    }])
             except Exception:
                 pass
 
@@ -4829,6 +4857,7 @@ class MainWindow(QMainWindow):
                 created_by = item.get("created_by") or ""
                 last_updated_by = item.get("last_updated_by") or created_by
                 pooped_on = bool(item.get("pooped_on", False))
+                remote_status = item.get("status") or ("defeated" if pooped_on else "active")
                 db.upsert_remote_poi(
                     remote_id,
                     float(item.get("x", 0)),
@@ -4840,6 +4869,7 @@ class MainWindow(QMainWindow):
                     created_by=created_by,
                     last_updated_by=last_updated_by,
                     pooped_on=pooped_on,
+                    status=remote_status,
                 )
 
             # Push local POIs. Existing remote_id is reused; missing remote_id gets a client UUID.
@@ -4852,6 +4882,7 @@ class MainWindow(QMainWindow):
                 created_by = row["created_by"] if "created_by" in row.keys() else display_name
                 last_updated_by = row["last_updated_by"] if "last_updated_by" in row.keys() else display_name
                 pooped_on = bool(row["pooped_on"]) if "pooped_on" in row.keys() else False
+                poi_status = poi_tactical_status(str(poi_type or "Custom"), pooped_on, str(row["status"]) if "status" in row.keys() else "")
                 payload.append({
                     "id": rid,
                     "guild_code": guild,
@@ -4863,12 +4894,25 @@ class MainWindow(QMainWindow):
                     "created_by": created_by or display_name or "Unknown",
                     "last_updated_by": last_updated_by or display_name or "Unknown",
                     "pooped_on": pooped_on,
+                    "status": poi_status,
                 })
                 local_remote_pairs.append((int(row["id"]), rid))
 
             uploaded = 0
             if payload:
-                supabase_request("POST", url, key, "guild_pois?on_conflict=id", payload)
+                try:
+                    supabase_request("POST", url, key, "guild_pois?on_conflict=id", payload)
+                except Exception as exc:
+                    # Older Supabase schemas may not have guild_pois.status yet.
+                    # Keep syncing position/name/note rather than failing completely.
+                    if "status" not in str(exc).lower():
+                        raise
+                    legacy_payload = []
+                    for item in payload:
+                        legacy = dict(item)
+                        legacy.pop("status", None)
+                        legacy_payload.append(legacy)
+                    supabase_request("POST", url, key, "guild_pois?on_conflict=id", legacy_payload)
                 uploaded = len(payload)
                 for local_id, rid in local_remote_pairs:
                     db.set_poi_remote_id(local_id, rid)
@@ -5522,6 +5566,7 @@ class MainWindow(QMainWindow):
         friendly_action = menu.addAction("Set Friendly")
         enemy_action = menu.addAction("Set Enemy")
         defeated_action = menu.addAction("Set Defeated")
+        gone_action = menu.addAction("Set Gone")
         menu.addSeparator()
         edit_action = menu.addAction("Edit Note")
         delete_action = menu.addAction("Delete POI")
@@ -5532,6 +5577,8 @@ class MainWindow(QMainWindow):
             self.set_selected_poi_status("enemy")
         elif chosen == defeated_action:
             self.set_selected_poi_status("defeated")
+        elif chosen == gone_action:
+            self.set_selected_poi_status("gone")
         elif chosen == edit_action:
             self.edit_selected_poi()
         elif chosen == delete_action:
@@ -5684,8 +5731,9 @@ class MainWindow(QMainWindow):
         note = note_edit.toPlainText()
         guild = db.get_setting("guild_code", "").upper()
         user = db.get_setting("display_name", "")
+        initial_status = poi_tactical_status(poi_type, False, "")
         try:
-            new_id = db.add_poi(x, y, poi_type, note, map_key="deep_desert", guild_code=guild, poi_type=poi_type, created_by=user)
+            new_id = db.add_poi(x, y, poi_type, note, map_key="deep_desert", guild_code=guild, poi_type=poi_type, created_by=user, status=initial_status)
             self.selected_poi_id_for_map = int(new_id)
         except TypeError:
             new_id = db.add_poi(x, y, poi_type, note)
@@ -6248,6 +6296,8 @@ class MainWindow(QMainWindow):
             db.upsert_local_member(guild, member_name, new_role)
             self.refresh_guild_members()
             self.refresh_dashboard()
+            self.update_guild_nav_visibility()
+            self.notify("Role Updated", f"{member_name} is now {new_role.title()}.", "success")
             try:
                 self.log_guild_activity(f"{action}d {member_name} to {new_role}")
             except Exception:
@@ -6255,9 +6305,20 @@ class MainWindow(QMainWindow):
             return True
         try:
             endpoint = f"guild_members?guild_code=eq.{urllib.parse.quote(guild)}&display_name=eq.{urllib.parse.quote(member_name)}"
-            supabase_request("PATCH", url, key, endpoint, {"role": new_role})
+            supabase_request("POST", url, key, "guild_members?on_conflict=guild_code,display_name", [{
+                "guild_code": guild,
+                "display_name": member_name,
+                "role": new_role,
+            }])
+            try:
+                supabase_request("PATCH", url, key, endpoint, {"role": new_role})
+            except Exception:
+                pass
+            db.upsert_local_member(guild, member_name, new_role)
             self.refresh_guild_members()
             self.refresh_dashboard()
+            self.update_guild_nav_visibility()
+            self.notify("Role Updated", f"{member_name} is now {new_role.title()}.", "success")
             try:
                 self.log_guild_activity(f"{action}d {member_name} to {new_role}")
             except Exception:
