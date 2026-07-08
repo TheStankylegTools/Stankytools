@@ -555,6 +555,19 @@ def _ensure_runtime_columns(conn: sqlite3.Connection) -> None:
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS guild_ideas_cache (
+            remote_id TEXT PRIMARY KEY,
+            guild_code TEXT DEFAULT '',
+            category TEXT DEFAULT 'General',
+            title TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            status TEXT DEFAULT 'New',
+            submitted_by TEXT DEFAULT '',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     conn.commit()
 
 # Wrap original connect so new runtime columns/settings are always present.
@@ -929,12 +942,14 @@ def clear_local_guild_cache(guild_code: str = "") -> None:
             conn.execute("DELETE FROM guild_news_cache WHERE UPPER(COALESCE(guild_code, ''))=?", (guild,))
             conn.execute("DELETE FROM guild_activity_cache WHERE UPPER(COALESCE(guild_code, ''))=?", (guild,))
             conn.execute("DELETE FROM guild_links_cache WHERE UPPER(COALESCE(guild_code, ''))=?", (guild,))
+            conn.execute("DELETE FROM guild_ideas_cache WHERE UPPER(COALESCE(guild_code, ''))=?", (guild,))
         else:
             conn.execute("DELETE FROM deep_desert_pois")
             conn.execute("DELETE FROM guild_bases")
             conn.execute("DELETE FROM guild_news_cache")
             conn.execute("DELETE FROM guild_activity_cache")
             conn.execute("DELETE FROM guild_links_cache")
+            conn.execute("DELETE FROM guild_ideas_cache")
         conn.commit()
     finally:
         conn.close()
@@ -1062,6 +1077,87 @@ def list_guild_links(guild_code: str = "", limit: int = 30) -> list[sqlite3.Row]
             "SELECT * FROM guild_links_cache WHERE guild_code=? ORDER BY title COLLATE NOCASE LIMIT ?",
             (guild, int(limit)),
         ).fetchall()
+    finally:
+        conn.close()
+
+
+def cache_guild_ideas(rows: list[dict], guild_code: str) -> None:
+    conn = connect()
+    try:
+        guild = (guild_code or "").strip().upper()
+        conn.execute("DELETE FROM guild_ideas_cache WHERE guild_code=?", (guild,))
+        for row in rows or []:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO guild_ideas_cache
+                (remote_id, guild_code, category, title, description, status, submitted_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(row.get("id", row.get("remote_id", ""))),
+                    guild,
+                    str(row.get("category", "General") or "General"),
+                    str(row.get("title", "Untitled") or "Untitled"),
+                    str(row.get("description", row.get("idea", "")) or ""),
+                    str(row.get("status", "New") or "New"),
+                    str(row.get("submitted_by", row.get("created_by", "")) or ""),
+                    str(row.get("created_at", "") or ""),
+                    str(row.get("updated_at", row.get("created_at", "")) or ""),
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def add_local_guild_idea(guild_code: str, category: str, title: str, description: str, submitted_by: str, status: str = "New", remote_id: str = "") -> str:
+    conn = connect()
+    try:
+        rid = (remote_id or "local-" + __import__('uuid').uuid4().hex).strip()
+        guild = (guild_code or "").strip().upper()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO guild_ideas_cache
+            (remote_id, guild_code, category, title, description, status, submitted_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (rid, guild, (category or "General").strip(), title.strip(), description.strip(), (status or "New").strip(), submitted_by.strip()),
+        )
+        conn.commit()
+        return rid
+    finally:
+        conn.close()
+
+
+def list_guild_ideas(guild_code: str = "", limit: int = 100) -> list[sqlite3.Row]:
+    conn = connect()
+    try:
+        guild = (guild_code or "").strip().upper()
+        return conn.execute(
+            "SELECT * FROM guild_ideas_cache WHERE guild_code=? ORDER BY created_at DESC LIMIT ?",
+            (guild, int(limit)),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def delete_guild_idea(remote_id: str) -> None:
+    conn = connect()
+    try:
+        conn.execute("DELETE FROM guild_ideas_cache WHERE remote_id=?", ((remote_id or "").strip(),))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_guild_idea_status(remote_id: str, status: str) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            "UPDATE guild_ideas_cache SET status=?, updated_at=CURRENT_TIMESTAMP WHERE remote_id=?",
+            ((status or "New").strip(), (remote_id or "").strip()),
+        )
+        conn.commit()
     finally:
         conn.close()
 

@@ -2752,7 +2752,7 @@ def apply_soft_shadow(widget, *, blur: int = 30, y: int = 10, alpha: int = 80) -
         pass
 
 def role_can_manage_guild() -> bool:
-    return (db.get_setting("guild_role", "member") or "member").lower() in {"owner", "officer"}
+    return (db.get_setting("guild_role", "member") or "member").lower() in {"owner", "admin", "officer"}
 
 
 def guild_logo_cache_path(guild_code: str | None = None) -> Path:
@@ -3318,7 +3318,9 @@ class MainWindow(QMainWindow):
         event_add.clicked.connect(self.submit_guild_event)
         market_header = QHBoxLayout()
         market_header.addWidget(market_title, 1)
-        market_header.addWidget(event_add)
+        # Dashboard should only display events. Add/manage actions live in Guild Admin.
+        event_add.setVisible(False)
+        event_add.setParent(None)
         market_layout.addLayout(market_header)
         dashboard_events_note = QLabel("Times shown in Central Time (CT).")
         dashboard_events_note.setObjectName("MutedLabel")
@@ -3338,7 +3340,9 @@ class MainWindow(QMainWindow):
         view_guild = QPushButton("Open Guild")
         view_guild.clicked.connect(self.open_guild_admin_page)
         news_header.addWidget(news_title, 1)
-        news_header.addWidget(view_guild)
+        # Dashboard should only display announcements. Guild actions live in Guild Admin.
+        view_guild.setVisible(False)
+        view_guild.setParent(None)
         news_layout.addLayout(news_header)
         self.dashboard_news_cards = QVBoxLayout()
         self.dashboard_news_cards.setSpacing(10)
@@ -3358,6 +3362,7 @@ class MainWindow(QMainWindow):
         self.dashboard_link_cards.setSpacing(10)
         links_layout.addLayout(self.dashboard_link_cards)
         links_layout.addStretch()
+
 
         upcoming_panel = QFrame()
         upcoming_panel.setObjectName("CommandCard")
@@ -3684,12 +3689,16 @@ class MainWindow(QMainWindow):
         guild_add_link = QPushButton("Add Helpful Link")
         guild_add_link.setObjectName("PrimaryButton")
         guild_add_link.clicked.connect(self.add_guild_link)
+        guild_add_idea = QPushButton("Submit Idea")
+        guild_add_idea.setObjectName("PrimaryButton")
+        guild_add_idea.clicked.connect(self.submit_idea_feedback)
         guild_upload_logo = QPushButton("Upload Logo")
         guild_upload_logo.clicked.connect(self.upload_guild_logo)
         admin_actions.addWidget(guild_roster)
         admin_actions.addWidget(guild_add_event)
         admin_actions.addWidget(guild_add_announcement)
         admin_actions.addWidget(guild_add_link)
+        admin_actions.addWidget(guild_add_idea)
         admin_actions.addWidget(guild_upload_logo)
         admin_actions.addStretch()
         layout.addLayout(admin_actions)
@@ -3830,6 +3839,45 @@ class MainWindow(QMainWindow):
         link_buttons.addStretch()
         links_layout.addLayout(link_buttons)
         tabs.addTab(links_panel, "Helpful Links")
+
+        # IDEAS TAB
+        ideas_panel = QFrame()
+        ideas_panel.setObjectName("Panel")
+        ideas_layout = QVBoxLayout(ideas_panel)
+        ideas_layout.setContentsMargins(18, 18, 18, 18)
+        ideas_layout.setSpacing(12)
+        ideas_title = QLabel("IDEAS")
+        ideas_title.setObjectName("SectionTitle")
+        ideas_layout.addWidget(ideas_title)
+        ideas_note = QLabel("Officer/owner idea review. Members only submit a title and description; leadership chooses the status.")
+        ideas_note.setObjectName("MutedLabel")
+        ideas_note.setWordWrap(True)
+        ideas_layout.addWidget(ideas_note)
+        self.guild_page_ideas = StankyTable(["Title", "Description", "Status"])
+        self.guild_page_ideas.setWordWrap(True)
+        self.guild_page_ideas.verticalHeader().setDefaultSectionSize(78)
+        self.guild_page_ideas.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.guild_page_ideas.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.guild_page_ideas.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.guild_page_ideas.cellDoubleClicked.connect(self.show_selected_guild_idea_detail)
+        self.guild_page_ideas.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.guild_page_ideas.customContextMenuRequested.connect(self.show_guild_idea_context_menu)
+        ideas_layout.addWidget(self.guild_page_ideas, 1)
+        idea_buttons = QHBoxLayout()
+        add_idea = QPushButton("Submit Idea")
+        add_idea.setObjectName("PrimaryButton")
+        add_idea.clicked.connect(self.submit_idea_feedback)
+        open_idea = QPushButton("Open Selected")
+        open_idea.clicked.connect(self.show_selected_guild_idea_detail)
+        delete_idea = QPushButton("Delete Selected")
+        delete_idea.clicked.connect(self.delete_selected_guild_idea)
+        idea_buttons.addWidget(add_idea)
+        idea_buttons.addWidget(open_idea)
+        idea_buttons.addWidget(delete_idea)
+        idea_buttons.addStretch()
+        ideas_layout.addLayout(idea_buttons)
+        if self._current_guild_admin():
+            tabs.addTab(ideas_panel, "Ideas")
 
         # ACTIVITY TAB
         activity_panel = QFrame()
@@ -4125,17 +4173,27 @@ class MainWindow(QMainWindow):
 
 
     def submit_idea_feedback(self):
+        guild = db.get_setting("guild_code", "").upper()
+        display_name = db.get_setting("display_name", "").strip() or "Unknown"
+        if not guild:
+            QMessageBox.information(self, "Submit Idea", "Join or create a guild before submitting ideas.")
+            return
         dlg = QDialog(self)
-        dlg.setWindowTitle("Submit Ideas")
-        dlg.setMinimumWidth(560)
+        dlg.setWindowTitle("Submit Idea")
+        dlg.setMinimumWidth(640)
         layout = QVBoxLayout(dlg)
         title = QLabel("SUBMIT AN IDEA")
         title.setObjectName("DialogHeader")
         layout.addWidget(title)
+        form = QFormLayout()
+        idea_title = QLineEdit()
+        idea_title.setPlaceholderText("Short title")
         body = QTextEdit()
         body.setPlaceholderText("Tell us what you want added or improved...")
         body.setMinimumHeight(180)
-        layout.addWidget(body)
+        form.addRow("Title", idea_title)
+        form.addRow("Description", body)
+        layout.addLayout(form)
         row = QHBoxLayout()
         row.addStretch()
         cancel = QPushButton("Cancel")
@@ -4148,16 +4206,153 @@ class MainWindow(QMainWindow):
         layout.addLayout(row)
         if dlg.exec() != QDialog.Accepted:
             return
+        title_text = idea_title.text().strip()
         text = body.toPlainText().strip()
-        if not text:
-            self.notify("Submit Ideas", "Nothing was entered.", "warning")
+        if not title_text or not text:
+            self.notify("Submit Idea", "Please enter a title and description.", "warning")
             return
-        # Email is intentionally not displayed in the UI. This opens the user's mail client with the recipient filled.
-        recipient = base64.b64decode("dG9ueWFwcmlsZUBnbWFpbC5jb20=").decode("utf-8")
-        subject = urllib.parse.quote("StankyTools Idea Submission")
-        message = urllib.parse.quote(text)
-        webbrowser.open(f"mailto:{recipient}?subject={subject}&body={message}")
-        self.notify("Submit Ideas", "Your email app was opened with the idea ready to send.", "success")
+        rid = str(uuid.uuid4())
+        db.add_local_guild_idea(guild, "General", title_text, text, display_name, "New", rid)
+        url, key = active_supabase()
+        if url and key and "PASTE_" not in key:
+            try:
+                payload = [{
+                    "id": rid,
+                    "guild_code": guild,
+                    "category": "General",
+                    "title": title_text,
+                    "description": text,
+                    "status": "New",
+                    "submitted_by": display_name,
+                }]
+                supabase_request("POST", url, key, "guild_ideas?on_conflict=id", payload)
+                self.log_guild_activity(f"submitted an idea: {title_text}")
+            except Exception as exc:
+                self.notify("Idea Saved Locally", f"Remote sync failed and will retry on refresh: {str(exc)[:120]}", "warning", 4200)
+        self.refresh_guild_page()
+        self.refresh_dashboard_activity_tables()
+        self.notify("Idea Submitted", "Your idea was submitted for officers and owners to review.", "success")
+
+    def _idea_row_from_table(self, source: str = "guild", row: int | None = None):
+        if source == "dashboard":
+            rows = getattr(self, "current_dashboard_ideas", []) or []
+        else:
+            rows = getattr(self, "current_guild_ideas", []) or []
+        if row is None:
+            table = getattr(self, "guild_page_ideas", None)
+            row = table.currentRow() if table else -1
+        if 0 <= int(row) < len(rows):
+            return rows[int(row)]
+        return None
+
+    def show_guild_idea_detail_by_index(self, row: int, source: str = "guild"):
+        idea = self._idea_row_from_table(source, row)
+        if not idea:
+            return
+        meta = f"Status: {idea['status'] or 'New'}"
+        DetailDialog(idea["title"] or "Idea", idea["description"] or "No details were provided.", self, meta=meta).exec()
+
+    def show_selected_guild_idea_detail(self, row: int | None = None, col: int = 0):
+        if isinstance(row, int) and row >= 0:
+            self.show_guild_idea_detail_by_index(row, "guild")
+        else:
+            table = getattr(self, "guild_page_ideas", None)
+            self.show_guild_idea_detail_by_index(table.currentRow() if table else -1, "guild")
+
+    def change_selected_guild_idea_status(self):
+        if not self._current_guild_admin():
+            QMessageBox.warning(self, "Permission Denied", "Only owners/officers can change idea status.")
+            return
+        idea = self._idea_row_from_table("guild")
+        if not idea:
+            QMessageBox.information(self, "Ideas", "Select an idea first.")
+            return
+        statuses = ["New", "Reviewing", "Planned", "In Progress", "Completed", "Declined"]
+        current = idea["status"] or "New"
+        idx = statuses.index(current) if current in statuses else 0
+        status, ok = QInputDialog.getItem(self, "Idea Status", "Status:", statuses, idx, False)
+        if not ok:
+            return
+        rid = str(idea["remote_id"] or "")
+        db.update_guild_idea_status(rid, status)
+        url, key = active_supabase()
+        if url and key and "PASTE_" not in key and rid and not rid.startswith("local-"):
+            try:
+                supabase_request("PATCH", url, key, f"guild_ideas?id=eq.{urllib.parse.quote(rid)}", {"status": status})
+                self.log_guild_activity(f"changed idea status to {status}: {idea['title'] or 'Idea'}")
+            except Exception as exc:
+                QMessageBox.warning(self, "Ideas", f"Status saved locally, but remote sync failed.\n\n{exc}")
+        self.refresh_guild_page()
+        self.refresh_dashboard_activity_tables()
+
+    def update_guild_idea_status_direct(self, idea_index: int, status: str):
+        """Update an idea status from the Guild Admin dropdown and sync it."""
+        if not self._current_guild_admin():
+            return
+        rows = getattr(self, "current_guild_ideas", []) or []
+        if not (0 <= int(idea_index) < len(rows)):
+            return
+        idea = rows[int(idea_index)]
+        rid = str(idea["remote_id"] or "")
+        if not rid:
+            return
+        old_status = str(idea["status"] or "New")
+        if status == old_status:
+            return
+        db.update_guild_idea_status(rid, status)
+        try:
+            idea["status"] = status
+        except Exception:
+            pass
+        url, key = active_supabase()
+        if url and key and "PASTE_" not in key and rid and not rid.startswith("local-"):
+            try:
+                supabase_request("PATCH", url, key, f"guild_ideas?id=eq.{urllib.parse.quote(rid)}", {"status": status})
+                self.log_guild_activity(f"changed idea status to {status}: {idea['title'] or 'Idea'}")
+            except Exception as exc:
+                self.notify("Idea Status", f"Saved locally, remote sync will retry: {str(exc)[:120]}", "warning", 4200)
+        self.refresh_guild_page()
+
+    def delete_selected_guild_idea(self):
+        idea = self._idea_row_from_table("guild")
+        if not idea:
+            QMessageBox.information(self, "Ideas", "Select an idea first.")
+            return
+        if not self._current_guild_admin():
+            QMessageBox.warning(self, "Permission Denied", "Only owners/officers can delete ideas.")
+            return
+        if QMessageBox.question(self, "Delete Idea", "Delete this submitted idea?") != QMessageBox.Yes:
+            return
+        rid = str(idea["remote_id"] or "")
+        db.delete_guild_idea(rid)
+        url, key = active_supabase()
+        if url and key and "PASTE_" not in key and rid and not rid.startswith("local-"):
+            try:
+                supabase_request("DELETE", url, key, f"guild_ideas?id=eq.{urllib.parse.quote(rid)}")
+                self.log_guild_activity(f"deleted idea: {idea['title'] or 'Idea'}")
+            except Exception as exc:
+                QMessageBox.warning(self, "Ideas", f"Deleted locally, but remote delete failed.\n\n{exc}")
+        self.refresh_guild_page()
+        self.refresh_dashboard_activity_tables()
+
+    def show_guild_idea_context_menu(self, pos):
+        table = getattr(self, "guild_page_ideas", None)
+        if not table:
+            return
+        row = table.rowAt(pos.y())
+        if row >= 0:
+            table.selectRow(row)
+        idea = self._idea_row_from_table("guild", table.currentRow())
+        if not idea:
+            return
+        menu = QMenu(self)
+        act_edit = menu.addAction("Edit")
+        act_delete = menu.addAction("Delete")
+        chosen = menu.exec(table.viewport().mapToGlobal(pos))
+        if chosen == act_edit:
+            self.show_selected_guild_idea_detail()
+        elif chosen == act_delete:
+            self.delete_selected_guild_idea()
 
     def open_donate_dialog(self):
         DetailDialog("Donate", "Donation link is not configured yet. Add your preferred donation URL in a future release and this button will open it directly.", self).exec()
@@ -5378,6 +5573,9 @@ class MainWindow(QMainWindow):
         base = db.get_base(base_id)
         if not base:
             return
+        if not self.can_manage_base(base):
+            QMessageBox.warning(self, "Permission Denied", "Only owners/officers or the base creator can delete this marker.")
+            return
         if QMessageBox.question(self, "Delete Base", "Delete this Deep Desert base marker?") != QMessageBox.Yes:
             return
         self.delete_remote_base(base)
@@ -5900,6 +6098,26 @@ class MainWindow(QMainWindow):
             for row in self.current_guild_links:
                 self.guild_page_links.add_row([row["title"] or "Untitled", row["url"] or "", row["created_by"] or "—"])
             self.guild_page_links.setSortingEnabled(True)
+        ideas_table = getattr(self, "guild_page_ideas", None)
+        if _qt_alive(ideas_table):
+            ideas_table.setSortingEnabled(False)
+            ideas_table.setRowCount(0)
+            self.current_guild_ideas = db.list_guild_ideas(guild, 100)
+            statuses = ["New", "Reviewing", "Planned", "In Progress", "Completed", "Declined"]
+            for idx, row in enumerate(self.current_guild_ideas):
+                description = str(row["description"] or "").strip()
+                ideas_table.add_row([row["title"] or "Untitled", description, ""])
+                combo = QComboBox()
+                combo.addItems(statuses)
+                current_status = str(row["status"] or "New")
+                combo.setCurrentText(current_status if current_status in statuses else "New")
+                combo.setProperty("idea_index", idx)
+                combo.currentTextChanged.connect(lambda value, box=combo: self.update_guild_idea_status_direct(int(box.property("idea_index")), value))
+                ideas_table.setCellWidget(idx, 2, combo)
+            ideas_table.setSortingEnabled(True)
+            ideas_table.resizeRowsToContents()
+        elif hasattr(self, "guild_page_ideas"):
+            self.guild_page_ideas = None
         if hasattr(self, "guild_page_activity"):
             self.guild_page_activity.setSortingEnabled(False)
             self.guild_page_activity.setRowCount(0)
@@ -6015,6 +6233,12 @@ class MainWindow(QMainWindow):
             db.cache_guild_links(links, guild)
         except Exception:
             pass
+        try:
+            ideas = supabase_request("GET", url, key, f"guild_ideas?guild_code=eq.{urllib.parse.quote(guild)}&select=*&order=created_at.desc&limit=100")
+            db.cache_guild_ideas(ideas, guild)
+        except Exception as exc:
+            if show_errors:
+                QMessageBox.warning(self, "Guild Ideas", str(exc))
         try:
             events = supabase_request("GET", url, key, f"guild_events?guild_code=eq.{urllib.parse.quote(guild)}&select=*&order=event_at.desc&limit=60")
             db.cache_guild_events(events, guild)
@@ -6651,11 +6875,17 @@ class MainWindow(QMainWindow):
             self.map_view.center_on(float(poi["x"]), float(poi["y"]))
 
     def can_manage_poi(self, poi) -> bool:
-        role = (db.get_setting("guild_role", "member") or "member").lower()
-        current_user = db.get_setting("display_name", "")
-        creator = poi["created_by"] if "created_by" in poi.keys() else ""
-        return role in {"owner", "officer"} or (creator and creator == current_user)
+        role = (db.get_setting("guild_role", "member") or "member").lower().strip()
+        current_user = (db.get_setting("display_name", "") or "").strip().lower()
+        creator = (poi["created_by"] if "created_by" in poi.keys() else "" or "").strip().lower()
+        return role in {"owner", "admin", "officer"} or (creator and creator == current_user)
 
+
+    def can_manage_base(self, base) -> bool:
+        role = (db.get_setting("guild_role", "member") or "member").lower().strip()
+        current_user = (db.get_setting("display_name", "") or "").strip().lower()
+        creator = (base["created_by"] if "created_by" in base.keys() else "" or "").strip().lower()
+        return role in {"owner", "admin", "officer"} or (creator and creator == current_user)
 
     def show_poi_context_menu(self, pos):
         if not hasattr(self, "poi_table"):
@@ -6779,6 +7009,9 @@ class MainWindow(QMainWindow):
             return
         poi = db.get_poi(poi_id)
         if not poi:
+            return
+        if not self.can_manage_poi(poi):
+            QMessageBox.warning(self, "Permission Denied", "Only owners/officers or the POI creator can delete this marker.")
             return
         if QMessageBox.question(self, "Delete POI", "Delete this POI?") != QMessageBox.Yes:
             return
@@ -7043,9 +7276,8 @@ class MainWindow(QMainWindow):
         base = db.get_base(base_id)
         if not base:
             return
-        user = db.get_setting("display_name", "")
-        if (base["created_by"] or "") != user:
-            QMessageBox.warning(self, "Permission Denied", "You can only delete your own bases.")
+        if not self.can_manage_base(base):
+            QMessageBox.warning(self, "Permission Denied", "Only owners/officers or the base creator can delete this marker.")
             return
         if QMessageBox.question(self, "Delete Base", "Delete this base marker?") != QMessageBox.Yes:
             return
@@ -7653,7 +7885,7 @@ class MainWindow(QMainWindow):
         if not url or not key or not guild:
             return
         # Delete children first so this works even if cascade is missing.
-        for table in ("guild_news", "guild_links", "guild_activity", "guild_bases", "guild_pois", "guild_members"):
+        for table in ("guild_news", "guild_links", "guild_ideas", "guild_activity", "guild_bases", "guild_pois", "guild_members"):
             try:
                 supabase_request("DELETE", url, key, f"{table}?guild_code=eq.{urllib.parse.quote(guild)}")
             except Exception:
