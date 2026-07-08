@@ -1,3 +1,3 @@
 """StankyTools desktop companion."""
 
-__version__ = "1.0.0-rc2.10"
+__version__ = "v0.3.12"
