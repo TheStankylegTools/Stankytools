@@ -1,4 +1,4 @@
-﻿# -*- mode: python ; coding: utf-8 -*-
+# -*- mode: python ; coding: utf-8 -*-
 """Lean PyInstaller spec for StankyTools.
 
 The old spec used collect_all('PySide6'), which pulls in far more Qt files than
@@ -11,13 +11,33 @@ from PyInstaller.utils.hooks import collect_submodules
 
 project = Path.cwd()
 
+def _has_webp_twin(path: Path) -> bool:
+    return path.suffix.lower() == ".png" and path.with_suffix(".webp").exists()
+
+
+def _add_tree(source: Path, dest: str, *, skip_png_twins: bool = False) -> None:
+    if not source.exists():
+        return
+    for path in sorted(source.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(source)
+        if any(part in {"exports", "__pycache__"} for part in rel.parts):
+            continue
+        if path.suffix.lower() in {".pyc", ".pyo", ".log", ".tmp", ".bak"}:
+            continue
+        if skip_png_twins and _has_webp_twin(path):
+            continue
+        datas.append((str(path), str(Path(dest) / rel.parent)))
+
+
 datas = []
-# Keep the installer small: ship UI assets only. Catalog databases/images are imported
-# by each user and saved under AppData/StankyTools, not bundled into releases.
-if (project / "assets").exists():
-    datas.append(("assets", "assets"))
-if (project / "stanky_market" / "assets").exists():
-    datas.append(("stanky_market/assets", "stanky_market/assets"))
+# Keep releases lean: ship only runtime assets, not generated exports or duplicate
+# PNG source copies when matching WebP assets are present.
+_add_tree(project / "assets" / "catalog", "assets/catalog")
+_add_tree(project / "assets" / "icons", "assets/icons", skip_png_twins=True)
+_add_tree(project / "assets" / "ui", "assets/ui", skip_png_twins=True)
+_add_tree(project / "stanky_market" / "assets" / "themes", "stanky_market/assets/themes", skip_png_twins=True)
 
 hiddenimports = [
     "PySide6.QtCore",
@@ -26,8 +46,6 @@ hiddenimports = [
     "PySide6.QtNetwork",
     "PySide6.QtSvg",
     "PySide6.QtSvgWidgets",
-    "PySide6.QtMultimedia",
-    "PySide6.QtMultimediaWidgets",
 ]
 hiddenimports += collect_submodules("tzdata")
 
@@ -42,6 +60,7 @@ excludes = [
     "PySide6.QtBluetooth", "PySide6.QtCharts", "PySide6.QtDataVisualization",
     "PySide6.QtLocation", "PySide6.QtNfc",
     "PySide6.QtPdf", "PySide6.QtPdfWidgets", "PySide6.QtPositioning", "PySide6.QtQuick3D",
+    "PySide6.QtMultimedia", "PySide6.QtMultimediaWidgets",
     "PySide6.QtSensors", "PySide6.QtSerialPort", "PySide6.QtSql",
     "PySide6.QtTextToSpeech", "PySide6.QtUiTools",
     "PySide6.QtWebChannel", "PySide6.QtWebSockets",
@@ -65,8 +84,8 @@ a = Analysis(
 )
 
 # PyInstaller's Qt hooks can still collect large optional runtimes through plugin
-# metadata. This app uses widget-based Qt, SVG rendering, networking, SQLite,
-# and multimedia only; it does not use QML/Quick/PDF/OpenGL scenes.
+# metadata. This app uses widget-based Qt, SVG rendering, networking, and SQLite;
+# it does not use QML/Quick/PDF/WebEngine/Multimedia/OpenGL scenes in release builds.
 _DROP_BINARY_TOKENS = (
     "opengl32sw.dll",
     "qt6quick",
@@ -74,6 +93,8 @@ _DROP_BINARY_TOKENS = (
     "qt6qmlmodels",
     "qt6pdf",
     "qt6opengl",
+    "qt6multimedia",
+    "qt6webengine",
 )
 a.binaries = [item for item in a.binaries if not any(token in item[0].lower() for token in _DROP_BINARY_TOKENS)]
 a.datas = [item for item in a.datas if not any(token in item[0].lower() for token in ("qml", "quick", "pdf"))]
@@ -105,5 +126,3 @@ coll = COLLECT(
     upx_exclude=["Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll"],
     name="StankyTools",
 )
-
-

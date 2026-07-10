@@ -3,6 +3,28 @@ from __future__ import annotations
 import time
 from PySide6.QtCore import QObject, QTimer, Signal
 
+try:
+    import shiboken6
+except Exception:
+    shiboken6 = None
+
+
+def _qt_alive(widget) -> bool:
+    if widget is None:
+        return False
+    try:
+        return bool(shiboken6.isValid(widget)) if shiboken6 is not None else True
+    except Exception:
+        return False
+
+
+def _safe_set_text(widget, text: str) -> None:
+    if _qt_alive(widget):
+        try:
+            widget.setText(text)
+        except RuntimeError:
+            pass
+
 
 class SyncManager(QObject):
     """Central, non-intrusive sync coordinator.
@@ -54,23 +76,19 @@ class SyncManager(QObject):
                         w.sync_guild_pois(show_popup=False)
                     if "all" in pending or "base" in pending:
                         w.sync_guild_bases(show_popup=False)
-                if hasattr(w, "poi_sync_status"):
-                    w.poi_sync_status.setText("Deep Desert POIs synced.")
-                if hasattr(w, "base_sync_status"):
-                    w.base_sync_status.setText("Base markers synced.")
+                _safe_set_text(getattr(w, "poi_sync_status", None), "Deep Desert POIs synced.")
+                _safe_set_text(getattr(w, "base_sync_status", None), "Base markers synced.")
             if "all" in pending or "news" in pending or "guild" in pending or "events" in pending or "specializations" in pending:
                 w.sync_guild_dashboard_content(show_errors=False)
             self.last_success = time.strftime("%Y-%m-%d %H:%M:%S")
             self.statusChanged.emit("Auto-sync complete")
-            if hasattr(w, "dashboard_sync_status"):
-                w.dashboard_sync_status.setText("SYNC STATUS: AUTO-SYNCED")
+            _safe_set_text(getattr(w, "dashboard_sync_status", None), "SYNC STATUS: AUTO-SYNCED")
             if hasattr(w, "notify"):
                 w.notify("Synced Successfully", "Guild data is up to date.", "success", 2200)
         except Exception as exc:
             self.pending.update(pending)
             self.statusChanged.emit(f"Sync failed: {exc}")
-            if hasattr(w, "dashboard_sync_status"):
-                w.dashboard_sync_status.setText("SYNC STATUS: RETRY QUEUED")
+            _safe_set_text(getattr(w, "dashboard_sync_status", None), "SYNC STATUS: RETRY QUEUED")
             if hasattr(w, "notify"):
                 w.notify("Sync Queued", "Network sync failed; changes remain saved locally and will retry.", "warning", 4200)
             if not self._timer.isActive():

@@ -42,23 +42,21 @@ def mascot_path(theme: str | None) -> Path:
 
 
 def banner_path(theme: str | None, page: str = "dashboard") -> Path:
+    """Return the active theme banner.
+
+    StankyTools uses one uniform banner per theme across the app so page
+    switches and theme changes never resize or crop the artwork.
+    """
     key = normalize_theme(theme)
-    page_key = (page or "dashboard").strip().lower().replace(" ", "_")
-    page_stem = page_key if page_key.endswith("_banner") else f"{page_key}_banner"
     theme_base = package_asset_path("themes", key)
-    candidates = [
-        theme_base / f"{page_stem}.webp",
-        theme_base / f"{page_stem}.png",
+    return first_existing(
         theme_base / "banner.webp",
         theme_base / "banner.png",
-        asset_path("backgrounds", f"{key}_{page_stem}.webp"),
-        asset_path("backgrounds", f"{key}_{page_stem}.png"),
-        asset_path("backgrounds", f"{page_stem}.webp"),
-        asset_path("backgrounds", f"{page_stem}.png"),
+        asset_path("backgrounds", f"{key}_theme_banner.webp"),
+        asset_path("backgrounds", f"{key}_theme_banner.png"),
         asset_path("backgrounds", "dashboard_banner.webp"),
         asset_path("backgrounds", "dashboard_banner.png"),
-    ]
-    return first_existing(*candidates)
+    )
 
 
 def nav_background_path(theme: str | None) -> Path:
@@ -78,3 +76,28 @@ def nav_background_path(theme: str | None) -> Path:
         asset_path("ui", "sidebar_texture.webp"),
     ]
     return first_existing(*candidates)
+
+
+def sidebar_background_path(theme: str | None) -> Path:
+    key = normalize_theme(theme)
+    theme_base = package_asset_path("themes", key)
+    return first_existing(
+        theme_base / "sidebar_bg.webp",
+        theme_base / "sidebar_bg.png",
+        asset_path("backgrounds", f"{key}_sidebar_bg.webp"),
+        asset_path("backgrounds", f"{key}_sidebar_bg.png"),
+        nav_background_path(theme),
+    )
+
+
+def page_background_path(theme: str | None) -> Path:
+    key = normalize_theme(theme)
+    theme_base = package_asset_path("themes", key)
+    return first_existing(
+        theme_base / "page_bg.webp",
+        theme_base / "page_bg.png",
+        asset_path("backgrounds", f"{key}_page_bg.webp"),
+        asset_path("backgrounds", f"{key}_page_bg.png"),
+        theme_base / "banner.webp",
+        theme_base / "banner.png",
+    )

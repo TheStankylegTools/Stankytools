@@ -10,3 +10,55 @@ Thumbs.db
 Desktop.ini
 build/
 dist/
+
+# Local Python/build artifacts
+.venv/
+build/
+dist/
+release_artifacts/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.tmp
+*.bak
+.pytest_cache/
+
+# Local/user data should never be committed
+/data/stanky_market.sqlite3
+/data/guild_logo.png
+/data/images/
+/data/catalog_images/
+/assets/exports/
+
+# Generated import/scrape artifacts
+/data/dune.geno.ggitems/
+/data/dune_catalog.*
+/data/geno_items.*
+/data/full_analysis.json
+/data/images.csv
+/data/item_candidates.json
+/data/json_payloads.json
+/data/links.csv
+/data/network_requests.csv
+/data/scripts.csv
+/data/catalog_import_report.json
+/Dune-Awakening-API/
+# One-off implementation notes
+/README_*_PATCH.md
+/README_*_FIX.md
+/README_COMPANION_*.md
+/README_CRAFTING_CALCULATOR_NEXT.md
+/README_DASHBOARD_*.md
+/README_EXPORT_*.md
+/README_FAST_*.md
+/README_GAME_MANAGER_*.md
+/README_GUILD_*.md
+/README_RECIPE_*.md
+/README_SETTINGS_*.md
+/RELEASE_OPTIMIZATION.md
+!/assets/catalog/
+!/assets/catalog/catalog.sqlite3
+# Stray root-level compatibility copies
+/app.py
+/theme_assets.py

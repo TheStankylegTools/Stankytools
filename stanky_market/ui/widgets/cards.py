@@ -1,17 +1,123 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout, QWidget
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Property, Qt
+from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QHBoxLayout, QWidget
+
+from ..theme_manager import theme_color_map
 
 
-class CommandCard(QFrame):
-    def __init__(self, title: str = "", subtitle: str = "", content: QWidget | None = None, parent: QWidget | None = None):
+class BaseCard(QFrame):
+    def __init__(self, parent: QWidget | None = None, theme_key: str | None = None, object_name: str = "BaseCard"):
         super().__init__(parent)
-        self.setObjectName("CommandCard")
+        self.setObjectName(object_name)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self._theme_key = theme_key
+        self._hover_strength = 0.0
+        self._shadow = QGraphicsDropShadowEffect(self)
+        self._shadow.setBlurRadius(40)
+        self._shadow.setOffset(0, 0)
+        self.setGraphicsEffect(self._shadow)
+        self._hover_anim = QPropertyAnimation(self, b"hoverStrength", self)
+        self._hover_anim.setDuration(170)
+        self._hover_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.apply_theme(theme_key)
+
+    def make_layout(self) -> QVBoxLayout:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(22)
+        return layout
+
+    def apply_theme(self, theme_key: str | None = None) -> None:
+        if theme_key is not None:
+            self._theme_key = theme_key
+        self._update_shadow()
+
+    def getHoverStrength(self) -> float:
+        return self._hover_strength
+
+    def setHoverStrength(self, value: float) -> None:
+        self._hover_strength = float(value)
+        self._update_shadow()
+
+    hoverStrength = Property(float, getHoverStrength, setHoverStrength)
+
+    def enterEvent(self, event):
+        self._hover_anim.stop()
+        self._hover_anim.setStartValue(self._hover_strength)
+        self._hover_anim.setEndValue(1.0)
+        self._hover_anim.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover_anim.stop()
+        self._hover_anim.setStartValue(self._hover_strength)
+        self._hover_anim.setEndValue(0.0)
+        self._hover_anim.start()
+        super().leaveEvent(event)
+
+    def _update_shadow(self) -> None:
+        colors = theme_color_map(self._theme_key)
+        accent = QColor(colors["accent"])
+        accent.setAlpha(42 + int(44 * self._hover_strength))
+        self._shadow.setColor(accent)
+        self._shadow.setBlurRadius(40 + int(12 * self._hover_strength))
+        self._shadow.setOffset(0, 0)
+
+
+class MetricCard(BaseCard):
+    def __init__(self, title: str = "", value: str = "", hint: str = "", parent: QWidget | None = None):
+        super().__init__(parent, object_name="MetricCard")
+        layout = self.make_layout()
+        self.title = QLabel(title)
+        self.title.setObjectName("CardTitle")
+        self.value = QLabel(value)
+        self.value.setObjectName("CardValue")
+        layout.addWidget(self.title)
+        layout.addWidget(self.value)
+        if hint:
+            self.hint = QLabel(hint)
+            self.hint.setObjectName("CardHint")
+            self.hint.setWordWrap(True)
+            layout.addWidget(self.hint)
+
+
+class StatisticsCard(MetricCard):
+    def __init__(self, title: str = "", value: str = "", hint: str = "", parent: QWidget | None = None):
+        super().__init__(title, value, hint, parent)
+        self.setObjectName("StatisticsCard")
+
+
+class CatalogCard(BaseCard):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent, object_name="CatalogCard")
+
+
+class GuildCard(BaseCard):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent, object_name="GuildCard")
+
+
+class EventCard(BaseCard):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent, object_name="EventCard")
+
+
+class NotificationCard(BaseCard):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent, object_name="NotificationCard")
+
+
+class InputCard(BaseCard):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent, object_name="InputCard")
+
+
+class CommandCard(BaseCard):
+    def __init__(self, title: str = "", subtitle: str = "", content: QWidget | None = None, parent: QWidget | None = None):
+        super().__init__(parent, object_name="CommandCard")
+        layout = self.make_layout()
         if title:
             label = QLabel(title.upper())
             label.setObjectName("SectionTitle")
@@ -36,7 +142,6 @@ class StatusPill(QFrame):
             icon = QLabel()
             pix = QPixmap(icon_path)
             if not pix.isNull():
-                # Wide Guild Role / Join Code badge assets include the words inside the artwork.
                 wide_badge = pix.width() > pix.height() * 1.8
                 target_w = 210 if wide_badge else 32
                 target_h = 64 if wide_badge else 32

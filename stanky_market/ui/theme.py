@@ -3,15 +3,22 @@ from __future__ import annotations
 from .tactical_theme import theme_colors
 
 
-def premium_qss(sidebar_texture=None, theme_key: str | None = "dune") -> str:
+def premium_qss(sidebar_texture=None, theme_key: str | None = "dune", page_texture=None) -> str:
     c = theme_colors(theme_key)
     sidebar_image = ""
+    page_image = ""
     try:
         if sidebar_texture and sidebar_texture.exists():
             texture = str(sidebar_texture).replace("\\", "/")
             sidebar_image = f"border-image: url({texture}) 0 0 0 0 stretch stretch;"
     except Exception:
         sidebar_image = ""
+    try:
+        if page_texture and page_texture.exists():
+            texture = str(page_texture).replace("\\", "/")
+            page_image = f"border-image: url({texture}) 0 0 0 0 stretch stretch;"
+    except Exception:
+        page_image = ""
 
     return f"""
     QWidget {{
@@ -22,12 +29,16 @@ def premium_qss(sidebar_texture=None, theme_key: str | None = "dune") -> str:
         selection-background-color: {c['accent_soft']};
     }}
     QWidget#Root {{
-        background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {c['bg']}, stop:0.55 #0C0D0E, stop:1 #15120E);
+        background: {c['bg']};
+    }}
+    QWidget#ContentRoot {{
+        background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 {c['bg']}, stop:0.55 {c['secondary']}, stop:1 #090A0B);
+        {page_image}
     }}
     QFrame#SideBar {{
         min-height: 100%;
-        background-color: #0A0B0C;
-        background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #070707, stop:0.55 {c['panel']}, stop:1 {c['accent_faint']});
+        background-color: {c['bg']};
+        background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #070707, stop:0.58 {c['panel']}, stop:1 {c['accent_faint']});
         {sidebar_image}
         border-right: 1px solid {c['accent']};
     }}
@@ -75,18 +86,18 @@ def premium_qss(sidebar_texture=None, theme_key: str | None = "dune") -> str:
     QLabel#MascotLogo {{ background: transparent; border: none; }}
 
     QFrame#Panel, QFrame#Card, QFrame#CommandCard, QFrame#PremiumStatCard, QFrame#NewsCard, QFrame#QuickActionCard {{
-        background: rgba(18, 19, 21, 0.86);
+        background: {c['panel']};
         border: 1px solid {c['border']};
         border-radius: 8px;
     }}
     QFrame#Panel:hover, QFrame#Card:hover, QFrame#CommandCard:hover, QFrame#PremiumStatCard:hover, QFrame#NewsCard:hover {{
         border: 1px solid {c['accent_soft']};
-        background: rgba(24, 26, 28, 0.94);
+        background: {c['panel_hover']};
     }}
     QFrame#Hero {{
         border: 1px solid {c['accent']};
         border-radius: 8px;
-        background: #080706;
+        background: {c['bg']};
     }}
     QLabel {{ background: transparent; border: none; }}
     QLabel#HeroKicker {{ color: {c['accent']}; font-size: 13px; font-weight: 950; }}
@@ -119,7 +130,7 @@ def premium_qss(sidebar_texture=None, theme_key: str | None = "dune") -> str:
     QLabel#NewsBody {{ color: {c['text']}; font-size: 13px; }}
 
     QPushButton {{
-        background: rgba(19, 20, 22, 0.92);
+        background: {c['secondary']};
         border: 1px solid {c['border']};
         border-radius: 7px;
         padding: 8px 13px;
@@ -131,7 +142,7 @@ def premium_qss(sidebar_texture=None, theme_key: str | None = "dune") -> str:
     QPushButton#DangerButton {{ background: rgba(150,40,34,0.28); border: 1px solid #C94F45; color: #FFDAD6; }}
 
     QLineEdit, QTextEdit, QSpinBox, QComboBox, QDateTimeEdit, QDateEdit {{
-        background: rgba(6, 7, 8, 0.86);
+        background: rgba(0, 0, 0, 0.34);
         border: 1px solid {c['border']};
         border-radius: 7px;
         padding: 7px 9px;
@@ -150,3 +161,4 @@ def premium_qss(sidebar_texture=None, theme_key: str | None = "dune") -> str:
     QScrollBar:vertical {{ background: rgba(0,0,0,0.22); width: 12px; border-radius: 6px; }}
     QScrollBar::handle:vertical {{ background: {c['accent_soft']}; border-radius: 6px; min-height: 36px; }}
     """
+

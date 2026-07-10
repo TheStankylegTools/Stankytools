@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 GITHUB_OWNER = "StankylegTools"
 # Public, releases-only repository. Keep the source repository private.
 # Attach only compiled Windows assets here; the updater ignores GitHub source archives.
@@ -213,8 +213,8 @@ def choose_update_asset(info: UpdateInfo) -> str:
         raise RuntimeError("No Windows installer/EXE or portable ZIP update asset was found. Source-code ZIPs are ignored by the updater.")
 
     preferred_patterns = (
-        r"^stankytools[-_]?setup[-_]?v?\d+(?:\.\d+)*\.exe$",
         r"^stankytools[-_]?portable[-_]?v?\d+(?:\.\d+)*\.zip$",
+        r"^stankytools[-_]?setup[-_]?v?\d+(?:\.\d+)*\.exe$",
         r"^stankytools[-_]?installer[-_]?v?\d+(?:\.\d+)*\.exe$",
         r"^stankytools[-_]?(?:windows|win)[-_]?v?\d*(?:\.\d+)*\.zip$",
         r"^stankytools[-_]?(?:windows|win)[-_]?v?\d*(?:\.\d+)*\.exe$",
@@ -225,7 +225,7 @@ def choose_update_asset(info: UpdateInfo) -> str:
         for file_name, original in lower_pairs:
             if re.match(pattern, file_name):
                 return original
-    for extension in (".exe", ".msi", ".zip"):
+    for extension in (".zip", ".exe", ".msi"):
         for file_name, original in lower_pairs:
             if file_name.endswith(extension):
                 return original
@@ -351,10 +351,3 @@ def stage_update_and_restart(zip_path: Path) -> None:
     script = _write_windows_update_script(zip_path.resolve(), app_dir, exe_path)
     subprocess.Popen(["cmd", "/c", str(script)], close_fds=True)
     _log("Updater script launched; app should quit now.")
-
-
-
-
-
-
-
