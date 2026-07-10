@@ -68,6 +68,7 @@ from PySide6.QtWidgets import (
 
 from . import db, deep_desert, guild_config, updater
 from .paths import app_root, asset_dir, data_dir, local_app_data_dir
+from .release_config import PUBLIC_RELEASES_URL
 from .ui.theme import premium_qss
 from .ui.theme_assets import banner_path, mascot_path, nav_background_path
 from .ui.tactical_theme import theme_colors
@@ -377,8 +378,8 @@ def resolve_local_path(value: str) -> Path:
 CATALOG_PIXMAP_CACHE: dict[tuple[str, int], QPixmap] = {}
 METHOD_DEEP_DESERT_URL = "https://www.method.gg/dune-awakening/deep-desert-companion"
 GAMING_TOOLS_DEEP_DESERT_URL = "https://dune.gaming.tools/deep-desert"
-DEFAULT_CATALOG_IMAGES_ZIP_URL = "https://github.com/StankylegTools/StankyTools-Releases/releases/latest/download/catalog_images.zip"
-DEFAULT_EASTER_EGG_VIDEO_URL = "https://github.com/StankylegTools/StankyTools-Releases/releases/latest/download/pgmayo.mp4"
+DEFAULT_CATALOG_IMAGES_ZIP_URL = f"{PUBLIC_RELEASES_URL}/latest/download/catalog_images.zip"
+DEFAULT_EASTER_EGG_VIDEO_URL = f"{PUBLIC_RELEASES_URL}/latest/download/pgmayo.mp4"
 
 def catalog_image_pixmap(image_path: str, size: int = 64) -> QPixmap:
     """Return a square thumbnail pixmap for catalog rows, with a fallback placeholder.
@@ -9770,8 +9771,3 @@ def main() -> None:
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
-
-
-
-
-

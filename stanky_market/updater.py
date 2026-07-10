@@ -16,14 +16,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from .release_config import (
+    PUBLIC_LATEST_RELEASE_API,
+    PUBLIC_LIST_RELEASES_API,
+    PUBLIC_RELEASE_OWNER,
+    PUBLIC_RELEASE_REPO,
+    PUBLIC_RELEASES_URL,
+)
+
 APP_VERSION = "1.0.3"
-GITHUB_OWNER = "StankylegTools"
+GITHUB_OWNER = PUBLIC_RELEASE_OWNER
 # Public, releases-only repository. Keep the source repository private.
 # Attach only compiled Windows assets here; the updater ignores GitHub source archives.
-GITHUB_REPO = "StankyTools-Releases"
-RELEASES_URL = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases"
-LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
-LIST_RELEASES_API = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases?per_page=1"
+GITHUB_REPO = PUBLIC_RELEASE_REPO
+RELEASES_URL = PUBLIC_RELEASES_URL
+LATEST_RELEASE_API = PUBLIC_LATEST_RELEASE_API
+LIST_RELEASES_API = PUBLIC_LIST_RELEASES_API
 
 ProgressCallback = Callable[[int, int], None]
 
