@@ -1,48 +1,51 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_submodules
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules
 
-project_root = Path.cwd()
+# GitHub Actions and local builds both run from the repository root.
+project_root = Path.cwd().resolve()
 
+
+def include_if_exists(relative_source, destination):
+    """Include a file or directory only when it exists in the checkout."""
+    source = project_root / relative_source
+    if source.exists():
+        print(f"Including release data: {source}")
+        return [(str(source), destination)]
+
+    print(f"Skipping missing release data: {source}")
+    return []
+
+
+# Only package application-owned assets required at runtime.
+# User-imported catalog images are deliberately excluded.
 datas = []
-
-
-def add_data(source, destination):
-    path = project_root / source
-    if path.exists():
-        datas.append((str(path), destination))
-        print(f"Including: {source}")
-    else:
-        print(f"Skipping missing asset: {source}")
-
-
-# Optional assets
-add_data(
+datas += include_if_exists(
     "stanky_market/assets/themes",
-    "stanky_market/assets/themes"
+    "stanky_market/assets/themes",
 )
-
-add_data(
+datas += include_if_exists(
     "data/deep_desert_map.png",
-    "data"
+    "data",
 )
-
-add_data(
+datas += include_if_exists(
     "data/hagga_basin_map.png",
-    "data"
+    "data",
+)
+datas += include_if_exists(
+    "assets/catalog/catalog.sqlite3",
+    "assets/catalog",
 )
 
-catalog_db = project_root / "assets" / "catalog" / "catalog.sqlite3"
-if catalog_db.exists():
-    datas.append(
-        (str(catalog_db), "assets/catalog")
-    )
+# Do not add stanky_market/assets/icons here. That directory is not present
+# in the repository and caused the GitHub Actions PyInstaller failure.
 
 hiddenimports = collect_submodules("PySide6")
 
+
 a = Analysis(
-    ["main.py"],
+    [str(project_root / "main.py")],
     pathex=[str(project_root)],
     binaries=[],
     datas=datas,
@@ -50,12 +53,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        "tests",
-        "tkinter",
-        "matplotlib.tests",
-        "numpy.tests",
-    ],
+    excludes=["tests"],
     noarchive=False,
 )
 
