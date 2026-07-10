@@ -1,23 +1,36 @@
 Unicode True
 
 !include "MUI2.nsh"
-!include "FileFunc.nsh"
 
 !ifndef APP_VERSION
-    !define APP_VERSION "0.0.0"
+    !define APP_VERSION "dev"
+!endif
+
+!ifndef DIST_DIR
+    !error "DIST_DIR was not provided by build_release.ps1."
+!endif
+
+!ifndef OUTPUT_DIR
+    !error "OUTPUT_DIR was not provided by build_release.ps1."
+!endif
+
+!ifndef APP_EXE_REL
+    !error "APP_EXE_REL was not provided by build_release.ps1."
 !endif
 
 !define APP_NAME "StankyTools"
 !define COMPANY_NAME "TheStankylegTools"
-!define APP_EXE "StankyTools.exe"
 
 Name "${APP_NAME}"
-OutFile "release_artifacts\StankyTools-Setup-v${APP_VERSION}.exe"
+OutFile "${OUTPUT_DIR}\StankyTools-Setup-v${APP_VERSION}.exe"
 
 InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
-InstallDirRegKey HKCU "Software\${COMPANY_NAME}\${APP_NAME}" "InstallLocation"
+InstallDirRegKey HKCU \
+    "Software\${COMPANY_NAME}\${APP_NAME}" \
+    "InstallLocation"
 
 RequestExecutionLevel user
+
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
 
@@ -40,77 +53,63 @@ VIAddVersionKey "ProductVersion" "${APP_VERSION}"
 
 !insertmacro MUI_LANGUAGE "English"
 
-Var InstalledExe
-
-Function FindAppExe
-    StrCpy $InstalledExe ""
-
-    IfFileExists "$INSTDIR\StankyTools.exe" 0 +3
-        StrCpy $InstalledExe "$INSTDIR\StankyTools.exe"
-        Return
-
-    IfFileExists "$INSTDIR\StankyTools\StankyTools.exe" 0 +3
-        StrCpy $InstalledExe "$INSTDIR\StankyTools\StankyTools.exe"
-        Return
-
-    IfFileExists "$INSTDIR\dist\StankyTools.exe" 0 +3
-        StrCpy $InstalledExe "$INSTDIR\dist\StankyTools.exe"
-        Return
-
-    IfFileExists "$INSTDIR\dist\StankyTools\StankyTools.exe" 0 +3
-        StrCpy $InstalledExe "$INSTDIR\dist\StankyTools\StankyTools.exe"
-        Return
-FunctionEnd
-
 Section "Install StankyTools" SEC_MAIN
     SetOutPath "$INSTDIR"
 
-    ; Package the entire PyInstaller dist directory regardless of its structure.
-    File /r "dist\*.*"
+    ; DIST_DIR is an absolute path supplied by build_release.ps1.
+    File /r "${DIST_DIR}\*.*"
 
-    Call FindAppExe
+    IfFileExists "$INSTDIR\${APP_EXE_REL}" AppFound 0
 
-    StrCmp $InstalledExe "" 0 AppFound
-        MessageBox MB_ICONSTOP \
-            "StankyTools.exe was not found after installation."
-        Abort
+    MessageBox MB_ICONSTOP \
+        "The application executable was not found after installation.$\r$\n$\r$\nExpected:$\r$\n$INSTDIR\${APP_EXE_REL}"
+
+    Abort
 
     AppFound:
 
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 
-    WriteRegStr HKCU "Software\${COMPANY_NAME}\${APP_NAME}" \
-        "InstallLocation" "$INSTDIR"
+    WriteRegStr HKCU \
+        "Software\${COMPANY_NAME}\${APP_NAME}" \
+        "InstallLocation" \
+        "$INSTDIR"
 
     WriteRegStr HKCU \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-        "DisplayName" "${APP_NAME}"
+        "DisplayName" \
+        "${APP_NAME}"
 
     WriteRegStr HKCU \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-        "DisplayVersion" "${APP_VERSION}"
+        "DisplayVersion" \
+        "${APP_VERSION}"
 
     WriteRegStr HKCU \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-        "Publisher" "${COMPANY_NAME}"
+        "Publisher" \
+        "${COMPANY_NAME}"
 
     WriteRegStr HKCU \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-        "InstallLocation" "$INSTDIR"
+        "InstallLocation" \
+        "$INSTDIR"
 
     WriteRegStr HKCU \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-        "DisplayIcon" "$InstalledExe"
+        "DisplayIcon" \
+        "$INSTDIR\${APP_EXE_REL}"
 
     WriteRegStr HKCU \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" \
-        "UninstallString" '"$INSTDIR\Uninstall.exe"'
+        "UninstallString" \
+        '"$INSTDIR\Uninstall.exe"'
 
     CreateDirectory "$SMPROGRAMS\${APP_NAME}"
 
     CreateShortcut \
         "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" \
-        "$InstalledExe"
+        "$INSTDIR\${APP_EXE_REL}"
 
     CreateShortcut \
         "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk" \
@@ -118,7 +117,7 @@ Section "Install StankyTools" SEC_MAIN
 
     CreateShortcut \
         "$DESKTOP\${APP_NAME}.lnk" \
-        "$InstalledExe"
+        "$INSTDIR\${APP_EXE_REL}"
 SectionEnd
 
 Section "Uninstall"
@@ -126,11 +125,12 @@ Section "Uninstall"
 
     Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
     Delete "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk"
-    RMDir "$SMPROGRAMS\${APP_NAME}"
 
+    RMDir "$SMPROGRAMS\${APP_NAME}"
     RMDir /r "$INSTDIR"
 
-    DeleteRegKey HKCU "Software\${COMPANY_NAME}\${APP_NAME}"
+    DeleteRegKey HKCU \
+        "Software\${COMPANY_NAME}\${APP_NAME}"
 
     DeleteRegKey HKCU \
         "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
