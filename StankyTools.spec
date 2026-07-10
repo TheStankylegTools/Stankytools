@@ -40,6 +40,7 @@ _add_tree(project / "assets" / "ui", "assets/ui", skip_png_twins=True)
 _add_tree(project / "stanky_market" / "assets" / "themes", "stanky_market/assets/themes", skip_png_twins=True)
 
 hiddenimports = [
+    "stanky_market.self_test",
     "PySide6.QtCore",
     "PySide6.QtGui",
     "PySide6.QtWidgets",

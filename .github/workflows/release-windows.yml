@@ -155,7 +155,7 @@ jobs:
           if ((Get-Item $portable).Length -lt 1MB) { throw "Portable ZIP is unexpectedly small." }
           if ((Get-Item $installer).Length -lt 1MB) { throw "Installer EXE is unexpectedly small." }
 
-      - name: Smoke test portable build without Python on PATH
+      - name: Self-test portable build without Python on PATH
         shell: pwsh
         run: |
           $portable = Resolve-Path "release_artifacts\StankyTools-Portable-$env:RELEASE_TAG.zip"
@@ -165,13 +165,14 @@ jobs:
           Expand-Archive -LiteralPath $portable -DestinationPath $testRoot -Force
           $exe = Get-ChildItem $testRoot -Filter StankyTools.exe -Recurse -File | Select-Object -First 1
           if (-not $exe) { throw "Portable ZIP does not contain StankyTools.exe." }
+          $marker = Join-Path $testRoot "portable-self-test.json"
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
-          $process = Start-Process -FilePath $exe.FullName -PassThru -WindowStyle Hidden
-          Start-Sleep -Seconds 8
-          if ($process.HasExited -and $process.ExitCode -ne 0) { throw "Portable app exited during smoke test with code $($process.ExitCode)." }
-          if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          $process = Start-Process -FilePath $exe.FullName -ArgumentList "--self-test", "--self-test-marker", $marker -PassThru -Wait -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Portable self-test failed with code $($process.ExitCode)." }
+          if (-not (Test-Path $marker)) { throw "Portable self-test marker was not written." }
+          Get-Content $marker
 
-      - name: Smoke test installer build without Python on PATH
+      - name: Self-test installer build without Python on PATH
         shell: pwsh
         run: |
           $installer = Resolve-Path "release_artifacts\StankyTools-Setup-$env:RELEASE_TAG.exe"
@@ -181,11 +182,12 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode)." }
           $exe = Get-ChildItem $installDir -Filter StankyTools.exe -Recurse -File | Select-Object -First 1
           if (-not $exe) { throw "Installed app does not contain StankyTools.exe." }
+          $marker = Join-Path $installDir "installed-self-test.json"
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
-          $app = Start-Process -FilePath $exe.FullName -PassThru -WindowStyle Hidden
-          Start-Sleep -Seconds 8
-          if ($app.HasExited -and $app.ExitCode -ne 0) { throw "Installed app exited during smoke test with code $($app.ExitCode)." }
-          if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+          $app = Start-Process -FilePath $exe.FullName -ArgumentList "--self-test", "--self-test-marker", $marker -PassThru -Wait -WindowStyle Hidden
+          if ($app.ExitCode -ne 0) { throw "Installed self-test failed with code $($app.ExitCode)." }
+          if (-not (Test-Path $marker)) { throw "Installed self-test marker was not written." }
+          Get-Content $marker
 
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@v4
