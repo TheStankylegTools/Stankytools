@@ -858,7 +858,18 @@ def build_timers_page(window) -> QWidget:
     notice.setObjectName("MutedText")
     notice.setWordWrap(True)
     layout.addWidget(notice)
-    _, _, timer_layout = _scroll_content(layout)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.NoFrame)
+    inner = QWidget()
+    timer_grid = QGridLayout(inner)
+    timer_grid.setContentsMargins(0, 0, 0, 0)
+    timer_grid.setHorizontalSpacing(14)
+    timer_grid.setVerticalSpacing(14)
+    scroll.setWidget(inner)
+    layout.addWidget(scroll, 1)
+
     active: dict[int, float] = {}
     labels: dict[int, QLabel] = {}
 
@@ -867,24 +878,38 @@ def build_timers_page(window) -> QWidget:
         return f"{seconds//60:02d}:{seconds%60:02d}"
 
     def refresh():
-        while timer_layout.count():
-            item = timer_layout.takeAt(0)
-            w = item.widget()
-            if w: w.deleteLater()
-        for row in store.list_timers():
-            card = _card(row["name"], f"Type: {row['timer_type']}  •  Duration: {fmt(row['duration_seconds'])}\n{row['notes'] or ''}", 130)
-            row_l = QHBoxLayout()
+        while timer_grid.count():
+            item = timer_grid.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        labels.clear()
+        rows = list(store.list_timers())
+        columns = 2
+        for idx, row in enumerate(rows):
+            card = _card(
+                row["name"],
+                f"Type: {row['timer_type']}  •  Duration: {fmt(row['duration_seconds'])}\n{row['notes'] or ''}",
+                150,
+            )
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            controls = QHBoxLayout()
             status = QLabel("Ready")
             status.setObjectName("CardValue")
-            start = QPushButton("Start")
-            reset = QPushButton("Reset")
-            start.clicked.connect(lambda checked=False, r=row: start_timer(r["id"], int(r["duration_seconds"])))
-            reset.clicked.connect(lambda checked=False, r=row: reset_timer(r["id"]))
-            row_l.addWidget(status); row_l.addStretch(1); row_l.addWidget(start); row_l.addWidget(reset)
-            card.layout().addLayout(row_l)
+            start_btn = QPushButton("Start")
+            reset_btn = QPushButton("Reset")
+            start_btn.clicked.connect(lambda checked=False, r=row: start_timer(r["id"], int(r["duration_seconds"])))
+            reset_btn.clicked.connect(lambda checked=False, r=row: reset_timer(r["id"]))
+            controls.addWidget(status)
+            controls.addStretch(1)
+            controls.addWidget(start_btn)
+            controls.addWidget(reset_btn)
+            card.layout().addLayout(controls)
             labels[row["id"]] = status
-            timer_layout.addWidget(card)
-        timer_layout.addStretch(1)
+            timer_grid.addWidget(card, idx // columns, idx % columns)
+        timer_grid.setColumnStretch(0, 1)
+        timer_grid.setColumnStretch(1, 1)
+        timer_grid.setRowStretch((len(rows) + columns - 1) // columns, 1)
 
     def start_timer(timer_id: int, duration: int):
         active[timer_id] = time.time() + duration
@@ -892,17 +917,25 @@ def build_timers_page(window) -> QWidget:
 
     def reset_timer(timer_id: int):
         active.pop(timer_id, None)
-        if timer_id in labels:
-            labels[timer_id].setText("Ready")
+        label = labels.get(timer_id)
+        if label is not None:
+            try:
+                label.setText("Ready")
+            except RuntimeError:
+                labels.pop(timer_id, None)
 
     def tick():
         now = time.time()
-        for tid, end in list(active.items()):
+        for timer_id, end in list(active.items()):
             remaining = int(end - now)
-            if tid in labels:
-                labels[tid].setText(fmt(remaining))
+            label = labels.get(timer_id)
+            if label is not None:
+                try:
+                    label.setText(fmt(remaining))
+                except RuntimeError:
+                    labels.pop(timer_id, None)
             if remaining <= 0:
-                active.pop(tid, None)
+                active.pop(timer_id, None)
                 window.notify("Timer Complete", "An Arrakis timer finished.", "info")
 
     refresh()

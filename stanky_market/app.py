@@ -69,7 +69,7 @@ from PySide6.QtWidgets import (
 from . import db, deep_desert, guild_config, updater
 from .paths import app_root, asset_dir, data_dir, local_app_data_dir
 from .ui.theme import premium_qss
-from .ui.theme_assets import banner_path, mascot_path, nav_background_path, page_background_path, sidebar_background_path
+from .ui.theme_assets import banner_path, mascot_path, nav_background_path
 from .ui.tactical_theme import theme_colors
 from .ui.widgets.cards import CommandCard, StatusPill
 from .services.sync_manager import SyncManager
@@ -2918,7 +2918,11 @@ GUILD_PRIMARY_SIETCHES = [
 
 
 class HeroFrame(QFrame):
-    """Banner frame that paints image assets safely with QPixmap."""
+    """Banner frame that paints image assets safely with QPixmap.
+
+    This avoids unsupported Qt stylesheet background-image rules that caused
+    repeated "Could not parse stylesheet" warnings on Windows.
+    """
     def __init__(self, banner_path: Path, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("Hero")
@@ -2927,7 +2931,8 @@ class HeroFrame(QFrame):
         self._scaled_pixmap = QPixmap()
         self._scaled_size = QSize()
         self.theme_page_key = "dashboard"
-        self.setFixedHeight(228)
+        self.setMinimumHeight(228)
+        self.setMaximumHeight(228)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setAttribute(Qt.WA_StyledBackground, True)
 
@@ -2947,6 +2952,9 @@ class HeroFrame(QFrame):
         rect = self.rect()
         painter.fillRect(rect, QColor('#070503'))
         if not self._pixmap.isNull():
+            # Theme banners are pre-normalized to the same 1464x228 canvas.
+            # Fill the full banner box instead of letterboxing/padding, so every
+            # theme occupies the exact same visible space.
             if self._scaled_size != rect.size() or self._scaled_pixmap.isNull():
                 self._scaled_pixmap = self._pixmap.scaled(
                     rect.size(),
@@ -2955,6 +2963,7 @@ class HeroFrame(QFrame):
                 )
                 self._scaled_size = rect.size()
             painter.drawPixmap(rect, self._scaled_pixmap)
+        # subtle readability overlay; text labels stay transparent, no black boxes
         painter.fillRect(rect, QColor(0, 0, 0, 38))
         super().paintEvent(event)
 
@@ -3389,6 +3398,68 @@ class MainWindow(QMainWindow):
             # Notifications should never interrupt the user's workflow.
             return None
 
+    def safe_set_text(self, widget, text) -> bool:
+        """Set text only when the underlying Qt object is still alive."""
+        if not qt_alive(widget):
+            return False
+        try:
+            widget.setText(str(text))
+            return True
+        except RuntimeError:
+            return False
+
+    def safe_set_visible(self, widget, visible: bool) -> bool:
+        if not qt_alive(widget):
+            return False
+        try:
+            widget.setVisible(bool(visible))
+            return True
+        except RuntimeError:
+            return False
+
+    def safe_set_pixmap(self, widget, pixmap) -> bool:
+        if not qt_alive(widget):
+            return False
+        try:
+            widget.setPixmap(pixmap)
+            return True
+        except RuntimeError:
+            return False
+
+    def _clear_page_widget_references(self, index: int) -> None:
+        """Drop Python references before a page is deleted/replaced.
+
+        Qt destroys child widgets with their page. Keeping attributes that point to
+        those children causes libshiboken 'C++ object already deleted' failures.
+        """
+        refs = {
+            0: (
+                "dashboard_sync_status", "dashboard_guild_status_label",
+                "dashboard_guild_name", "dashboard_guild_name_label",
+                "dashboard_user", "dashboard_members", "dashboard_guild_logo",
+                "dashboard_guild_logo_large", "dashboard_guild_role_label",
+                "dashboard_guild_faction_label", "dashboard_guild_world_label",
+                "dashboard_guild_sietch_label", "dashboard_guild_world_identity_label",
+                "dashboard_guild_sietch_identity_label", "dashboard_guild_setup_panel",
+                "dashboard_join_guild_button", "dashboard_create_guild_button",
+                "dashboard_identity_leave_guild_button", "dashboard_change_faction_button",
+            ),
+            4: (
+                "guild_page_title", "guild_page_role_pill", "guild_page_code_pill",
+                "guild_page_logo", "guild_page_members", "guild_page_news",
+                "guild_page_events", "guild_page_links", "guild_page_ideas",
+                "guild_page_activity", "guild_add_event", "guild_add_announcement",
+                "guild_upload_logo", "guild_edit_info",
+            ),
+            5: (
+                "guild_status", "guild_role_label", "join_guild_button",
+                "create_guild_button", "leave_guild_button", "theme_select",
+                "update_status", "settings_last_sync", "settings_sync_status",
+            ),
+        }
+        for attr in refs.get(index, ()):
+            setattr(self, attr, None)
+
     def _build_ui(self):
         root = QWidget()
         root.setObjectName("Root")
@@ -3419,7 +3490,7 @@ class MainWindow(QMainWindow):
         self.sidebar_logo.setAlignment(Qt.AlignCenter)
         self.sidebar_logo.setContentsMargins(0, 0, 0, 0)
         self.sidebar_logo.setStyleSheet("QLabel#MascotLogo { background: transparent; border: none; padding: 0px; margin: 0px; }")
-        self.sidebar_logo.setFixedSize(337, 238)
+        self.sidebar_logo.setFixedSize(170, 170)
         theme_key = db.get_setting("color_theme", "dune") or "dune"
         self._refresh_sidebar_mascot(theme_key)
         head_layout.addWidget(self.sidebar_logo, 0, Qt.AlignCenter)
@@ -3545,6 +3616,7 @@ class MainWindow(QMainWindow):
         content_layout.setSpacing(12)
         self.global_banner = HeroFrame(banner_path(db.get_setting("color_theme", "dune") or "dune", "dashboard"))
         self.global_banner.theme_page_key = "dashboard"
+        self.global_banner.setFixedHeight(228)
         self.global_banner.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         content_layout.addWidget(self.global_banner)
         content_layout.addWidget(self.pages, 1)
@@ -3582,6 +3654,7 @@ class MainWindow(QMainWindow):
         if index < 0 or index >= len(builders):
             return
         old = self.pages.widget(index)
+        self._clear_page_widget_references(index)
         page = builders[index]()
         self.pages.removeWidget(old)
         old.deleteLater()
@@ -4749,7 +4822,7 @@ class MainWindow(QMainWindow):
         quick_actions_title.setObjectName("SectionTitle")
         quick_actions_layout.addWidget(quick_actions_title)
 
-        settings_action_row = QHBoxLayout()
+        settings_action_row = QVBoxLayout()
         settings_action_row.setSpacing(10)
 
         test = QPushButton("Test Connection")
@@ -4774,8 +4847,9 @@ class MainWindow(QMainWindow):
         for action_button in (test, sync_now, check_update, open_releases, submit_ideas, donate):
             action_button.setMinimumHeight(38)
             action_button.setMinimumWidth(128)
+            action_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             settings_action_row.addWidget(action_button)
-        settings_action_row.addStretch()
+        settings_action_row.addStretch(1)
         quick_actions_layout.addLayout(settings_action_row)
         settings_top_row.addWidget(quick_actions_panel, 2)
         layout.addLayout(settings_top_row)
@@ -5074,35 +5148,21 @@ class MainWindow(QMainWindow):
             set_progress_text("Verifying package...")
             QApplication.processEvents()
 
-            package = Path(package_path)
             if hasattr(self, "update_status"):
-                self.update_status.setText(f"Update downloaded to: {package}")
-
-            if package.suffix.lower() == ".zip" and os.name == "nt" and updater.is_packaged_app():
-                install_now = QMessageBox.question(
-                    self,
-                    "Install Update",
-                    "The update is ready. Install it now and restart StankyTools?"
-                )
-                if install_now == QMessageBox.Yes:
-                    set_progress_text("Installing update and restarting...")
-                    updater.stage_update_and_restart(package)
-                    QApplication.quit()
-                    return
-
-            self.notify("Update Downloaded", f"Saved to {package}", "success", 7000)
+                self.update_status.setText(f"Update downloaded to: {package_path}")
+            self.notify("Update Downloaded", f"Saved to {package_path}", "success", 7000)
             try:
                 if os.name == "nt":
-                    os.startfile(str(package.parent))
+                    os.startfile(str(Path(package_path).parent))
                 else:
-                    webbrowser.open(package.parent.as_uri())
+                    webbrowser.open(Path(package_path).parent.as_uri())
             except Exception:
                 pass
             QMessageBox.information(
                 self,
                 "Update Downloaded",
                 "The update package was downloaded and validated.\n\n"
-                f"Location:\n{package}\n\n"
+                f"Location:\n{package_path}\n\n"
                 "The folder has been opened so you can install it when ready."
             )
         except Exception as exc:
@@ -5196,31 +5256,72 @@ class MainWindow(QMainWindow):
         self.refresh_dashboard_activity_tables()
 
     def refresh_guild_surfaces_after_identity_change(self, refresh_remote: bool = False):
-        """Refresh every visible guild-aware surface after join/create/leave.
+        """Refresh live guild UI without rebuilding pages or touching stale widgets.
 
-        This intentionally updates live widgets only and catches deleted Qt wrapper
-        cases so a stale QLabel cannot make guild creation/join look failed.
+        Identity changes are local-first. Remote member loading is explicitly
+        separated so Join/Create/Leave cannot fail because of a network request or
+        a deleted QLabel from a previously rebuilt page.
         """
-        def _call(fn):
+        guild = (db.get_setting("guild_code", "") or "").upper()
+
+        # Populate a local cached roster immediately. Remote refresh, when requested,
+        # happens separately and is never required for the UI transition to succeed.
+        try:
+            self.current_guild_members = [
+                {
+                    "display_name": row["display_name"],
+                    "role": row["role"] if "role" in row.keys() else "member",
+                    "status": row["status"] if "status" in row.keys() else "offline",
+                    "last_seen": row["last_seen"] if "last_seen" in row.keys() else "",
+                }
+                for row in (db.list_local_members(guild) if guild else [])
+            ]
+        except Exception:
+            self.current_guild_members = []
+
+        for fn in (self.update_guild_nav_visibility, self.update_sidebar_status,
+                   self.update_guild_button_visibility, self.refresh_guild_logo_widgets,
+                   self.safe_refresh_dashboard):
             try:
                 fn()
-            except RuntimeError as exc:
-                if "already deleted" not in str(exc):
-                    raise
+            except Exception:
+                pass
+
+        # Only touch pages that actually exist. Never rebuild them during join/create.
+        loaded = getattr(self, "loaded_pages", set())
+        if 4 in loaded:
+            try:
+                self.refresh_guild_page()
+            except Exception:
+                pass
+        if 2 in loaded or 10 in loaded:
+            try:
+                self.refresh_pois()
+                self.refresh_deep_desert_bases()
+            except Exception:
+                pass
+        if 3 in loaded or 10 in loaded:
+            try:
+                self.refresh_bases()
+                self.refresh_map()
             except Exception:
                 pass
 
         if refresh_remote:
-            _call(lambda: self.sync_guild_dashboard_content(show_errors=False))
-        _call(self.update_guild_nav_visibility)
-        _call(self.update_sidebar_status)
-        _call(self.update_guild_button_visibility)
-        _call(self.refresh_guild_members)
-        _call(self.refresh_guild_logo_widgets)
-        _call(self.refresh_dashboard)
-        _call(self.refresh_guild_page)
-        _call(self.refresh_pois)
-        _call(self.refresh_bases)
+            QTimer.singleShot(0, self._refresh_guild_remote_after_identity_change)
+
+    def _refresh_guild_remote_after_identity_change(self) -> None:
+        """Optional remote refresh, isolated from the Join/Create UI transaction."""
+        try:
+            self.refresh_guild_members()
+        except Exception:
+            return
+        try:
+            self.safe_refresh_dashboard()
+            if 4 in getattr(self, "loaded_pages", set()):
+                self.refresh_guild_page()
+        except Exception:
+            pass
 
     def refresh_catalog_categories(self):
         if not hasattr(self, "catalog_category"):
@@ -6639,8 +6740,8 @@ class MainWindow(QMainWindow):
                     combat = int(spec["combat"] if spec is not None else 1)
                 except Exception:
                     combat = 1
-                craft_star = " â˜…" if crafting >= 100 else ""
-                combat_star = " â˜…" if combat >= 100 else ""
+                craft_star = " ★" if crafting >= 100 else ""
+                combat_star = " ★" if combat >= 100 else ""
                 visible_rows.append((name, crafting, combat, craft_star, combat_star))
 
             if not visible_rows:
@@ -6650,7 +6751,7 @@ class MainWindow(QMainWindow):
             for name, crafting, combat, craft_star, combat_star in visible_rows[:12]:
                 row_label = QLabel(f"{name}    Crafting {crafting}{craft_star}    Combat {combat}{combat_star}")
                 row_label.setObjectName("NewsTitle")
-                row_label.setToolTip("â˜… means this specialization is level 100")
+                row_label.setToolTip("★ means this specialization is level 100")
                 self.dashboard_members_list.addWidget(row_label)
         if hasattr(self, "dashboard_roster_specs_cards"):
             self._clear_layout(self.dashboard_roster_specs_cards)
@@ -6662,9 +6763,9 @@ class MainWindow(QMainWindow):
                 combat = int(row["combat"] or 1)
                 badges = []
                 if crafting >= 100:
-                    badges.append("Crafting 100 â˜…")
+                    badges.append("Crafting 100 ★")
                 if combat >= 100:
-                    badges.append("Combat 100 â˜…")
+                    badges.append("Combat 100 ★")
                 if badges:
                     max_rows.append((name, "   ".join(badges)))
             if not max_rows:
@@ -8857,7 +8958,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 rows = []
             self.current_guild_members = rows
-            safe_label_set_text(getattr(self, "guild_status", None), f"Member refresh issue: {exc}")
+            self.safe_set_text(getattr(self, "guild_status", None), f"Member refresh issue: {exc}")
             return rows
 
     def remove_guild_member(self, member_name: str, member_role: str = "member") -> bool:
@@ -9011,26 +9112,18 @@ class MainWindow(QMainWindow):
         world = db.get_setting("guild_world", "") or ""
         sietch = db.get_setting("guild_primary_sietch", "") or ""
         status_text = f"Joined: {guild_name} as {user}" if joined else "Create or join a guild to enable shared tools."
-        if qt_alive(getattr(self, "guild_status", None)):
-            self.guild_status.setText(status_text if joined else "Not joined yet.")
-        if qt_alive(getattr(self, "dashboard_guild_status_label", None)):
-            self.dashboard_guild_status_label.setText(status_text)
-        if qt_alive(getattr(self, "dashboard_guild_faction_label", None)):
-            self.dashboard_guild_faction_label.setText((f"Faction: {faction}" if faction else "Faction: Not selected"))
-        if qt_alive(getattr(self, "dashboard_guild_world_label", None)):
-            self.dashboard_guild_world_label.setText((f"World: {world}" if world else "World: Not selected"))
-        if qt_alive(getattr(self, "dashboard_guild_sietch_label", None)):
-            self.dashboard_guild_sietch_label.setText((f"Primary Sietch: {sietch}" if sietch else "Primary Sietch: None"))
-        if qt_alive(getattr(self, "dashboard_guild_world_identity_label", None)):
-            self.dashboard_guild_world_identity_label.setText((f"World: {world}" if world else "World: Not selected"))
-        if qt_alive(getattr(self, "dashboard_guild_sietch_identity_label", None)):
-            self.dashboard_guild_sietch_identity_label.setText((f"Primary Sietch: {sietch}" if sietch else "Primary Sietch: None"))
-        if qt_alive(getattr(self, "dashboard_guild_role_label", None)):
-            role = (db.get_setting("guild_role", "LOCAL MODE") or "LOCAL MODE").upper()
-            if faction and joined:
-                self.dashboard_guild_role_label.setText(f"{role} â€¢ {faction.upper()}")
-            else:
-                self.dashboard_guild_role_label.setText(role)
+        self.safe_set_text(getattr(self, "guild_status", None), status_text if joined else "Not joined yet.")
+        self.safe_set_text(getattr(self, "dashboard_guild_status_label", None), status_text)
+        self.safe_set_text(getattr(self, "dashboard_guild_faction_label", None), (f"Faction: {faction}" if faction else "Faction: Not selected"))
+        self.safe_set_text(getattr(self, "dashboard_guild_world_label", None), (f"World: {world}" if world else "World: Not selected"))
+        self.safe_set_text(getattr(self, "dashboard_guild_sietch_label", None), (f"Primary Sietch: {sietch}" if sietch else "Primary Sietch: None"))
+        self.safe_set_text(getattr(self, "dashboard_guild_world_identity_label", None), (f"World: {world}" if world else "World: Not selected"))
+        self.safe_set_text(getattr(self, "dashboard_guild_sietch_identity_label", None), (f"Primary Sietch: {sietch}" if sietch else "Primary Sietch: None"))
+        role = (db.get_setting("guild_role", "LOCAL MODE") or "LOCAL MODE").upper()
+        self.safe_set_text(
+            getattr(self, "dashboard_guild_role_label", None),
+            f"{role} • {faction.upper()}" if faction and joined else role,
+        )
         self.update_guild_nav_visibility()
         # Keep this method lightweight. It is called from many UI refresh paths
         # including map double-click events; do not perform network refreshes here.
@@ -9228,7 +9321,7 @@ class MainWindow(QMainWindow):
     def _refresh_sidebar_mascot(self, theme_key: str | None = None) -> None:
         """Load the active theme mascot into a fixed-size slot.
 
-        Mascot source files are normalized 1024x1024 transparent PNGs, so theme
+        Mascot source files are normalized 512x512 transparent PNGs, so theme
         changes no longer visually jump between different logo sizes.
         """
         try:
@@ -9239,7 +9332,7 @@ class MainWindow(QMainWindow):
             pix = QPixmap(str(mascot_path(key)))
             label.clear()
             if not pix.isNull():
-                label.setPixmap(pix.scaled(323, 232, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                label.setPixmap(pix.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         except Exception:
             pass
 
@@ -9285,9 +9378,8 @@ class MainWindow(QMainWindow):
         theme_key = self.theme_select.currentData() or "dune"
         db.set_setting("color_theme", str(theme_key))
         try:
-            sidebar_bg = sidebar_background_path(theme_key)
-            page_bg = page_background_path(theme_key)
-            QApplication.instance().setStyleSheet(premium_qss(sidebar_bg, str(theme_key), page_bg))
+            texture = nav_background_path(theme_key)
+            QApplication.instance().setStyleSheet(premium_qss(texture, str(theme_key)))
         except Exception:
             pass
         self.refresh_visible_theme_assets()
@@ -9600,12 +9692,9 @@ class MainWindow(QMainWindow):
             db.set_setting("guild_name", db.get_setting("guild_name", guild) or guild)
             db.set_setting("guild_role", db.get_setting("guild_role", "member") or "member")
             db.upsert_local_member(guild, display_name, db.get_setting("guild_role", "member") or "member")
-            if hasattr(self, "guild_code"):
-                self.guild_code.setText(guild)
-            if hasattr(self, "display_name"):
-                self.display_name.setText(display_name)
-            if hasattr(self, "guild_role_label"):
-                self.guild_role_label.setText("Role: " + (db.get_setting("guild_role", "member") or "member"))
+            self.safe_set_text(getattr(self, "guild_code", None), guild)
+            self.safe_set_text(getattr(self, "display_name", None), display_name)
+            self.safe_set_text(getattr(self, "guild_role_label", None), "Role: " + (db.get_setting("guild_role", "member") or "member"))
             self.refresh_guild_surfaces_after_identity_change(refresh_remote=False)
             QTimer.singleShot(200, lambda: self.refresh_guild_surfaces_after_identity_change(refresh_remote=False))
             if show_success:
@@ -9639,18 +9728,23 @@ class MainWindow(QMainWindow):
                 "role": role,
             }])
             db.set_setting("guild_role", role)
-            if hasattr(self, "guild_code"):
-                self.guild_code.setText(guild)
-            if hasattr(self, "display_name"):
-                self.display_name.setText(display_name)
-            if hasattr(self, "guild_role_label"):
-                self.guild_role_label.setText("Role: " + role)
-            self.sync_guild_pois(show_popup=False)
-            self.sync_guild_bases(show_popup=False)
-            self.sync_guild_dashboard_content(show_errors=False)
+            self.safe_set_text(getattr(self, "guild_code", None), guild)
+            self.safe_set_text(getattr(self, "display_name", None), display_name)
+            self.safe_set_text(getattr(self, "guild_role_label", None), "Role: " + role)
             self.refresh_guild_surfaces_after_identity_change(refresh_remote=False)
-            self.sync_guild_logo_from_remote()
-            QTimer.singleShot(200, lambda: self.refresh_guild_surfaces_after_identity_change(refresh_remote=False))
+
+            def _post_join_sync():
+                try:
+                    self.sync_guild_pois(show_popup=False)
+                    self.sync_guild_bases(show_popup=False)
+                    self.sync_guild_dashboard_content(show_errors=False)
+                    self.sync_guild_logo_from_remote()
+                    self.refresh_guild_surfaces_after_identity_change(refresh_remote=True)
+                except Exception as sync_exc:
+                    if hasattr(self, "sync_manager"):
+                        self.sync_manager.statusChanged.emit(f"Guild sync pending: {sync_exc}")
+
+            QTimer.singleShot(250, _post_join_sync)
             if show_success:
                 self.notify("Guild Joined", f"Joined guild {guild}.", "success")
         except Exception as exc:
@@ -9672,7 +9766,12 @@ def main() -> None:
     except Exception:
         pass
     theme_key = db.get_setting('color_theme', 'dune') or 'dune'
-    app.setStyleSheet(premium_qss(sidebar_background_path(theme_key), theme_key, page_background_path(theme_key)))
+    app.setStyleSheet(premium_qss(nav_background_path(theme_key), theme_key))
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
+
+
+
+
+
