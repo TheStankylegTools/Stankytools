@@ -3897,20 +3897,20 @@ class MainWindow(QMainWindow):
         entries = []
         for key in ["lab_1", "lab_2", "lab_3", "lab_4", "lab_5", "sandstorm"]:
             try:
-                end_time = float(db.get_setting(f"timer_{key}_end", "0") or 0)
+                end_time = float(companion_store.get_setting(f"timer_{key}_end", "0") or 0)
             except Exception:
                 end_time = 0
             remaining = int(end_time - now)
             if remaining <= 0:
                 if end_time > 0:
-                    db.set_setting(f"timer_{key}_end", "0")
+                    companion_store.set_setting(f"timer_{key}_end", "0")
                 continue
             name_default = "Sandstorm" if key == "sandstorm" else f"Laboratory {key.split('_')[-1]}"
-            name = str(db.get_setting(f"timer_{key}_name", name_default) or name_default)
+            name = str(companion_store.get_setting(f"timer_{key}_name", name_default) or name_default)
             hours, remainder = divmod(remaining, 3600)
             minutes, seconds = divmod(remainder, 60)
             entries.append(f"{name}: {hours:02d}:{minutes:02d}:{seconds:02d}")
-        label.setText("ACTIVE TIMERS: " + ("   •   ".join(entries) if entries else "None"))
+        label.setText("" + ("   •   ".join(entries) if entries else "None"))
 
     def _build_dashboard_page(self) -> QWidget:
         page = QWidget()
@@ -3963,7 +3963,7 @@ class MainWindow(QMainWindow):
         self.dashboard_guild_role_label.setObjectName("DashboardGuildRole")
         self.dashboard_world_sietch_label = QLabel("WORLD: Not selected   •   SIETCH: None")
         self.dashboard_world_sietch_label.setObjectName("DashboardWorldSietch")
-        self.dashboard_active_timers_label = QLabel("ACTIVE TIMERS: None")
+        self.dashboard_active_timers_label = QLabel("None")
         self.dashboard_active_timers_label.setObjectName("DashboardActiveTimers")
         self.dashboard_active_timers_label.setWordWrap(True)
         self.dashboard_active_timers_label.setStyleSheet("color:#F0C76C; font-size:13px; font-weight:900; letter-spacing:0.5px;")

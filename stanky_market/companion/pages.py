@@ -953,6 +953,9 @@ def build_timers_page(window) -> QWidget:
 
         name = name_inputs.get(key)
         timer_name = name.text().strip() if name is not None else "Timer"
+        refresh_dashboard = getattr(window, "_refresh_dashboard_active_timers", None)
+        if callable(refresh_dashboard):
+            refresh_dashboard()
         window.notify(
             "Timer Started",
             f"{timer_name or 'Timer'} is now running.",
@@ -963,6 +966,9 @@ def build_timers_page(window) -> QWidget:
         active.pop(key, None)
         store.set_setting(f"timer_{key}_end", "0")
         status = status_labels.get(key)
+        refresh_dashboard = getattr(window, "_refresh_dashboard_active_timers", None)
+        if callable(refresh_dashboard):
+            refresh_dashboard()
         if status is not None:
             try:
                 status.setText("Ready")
