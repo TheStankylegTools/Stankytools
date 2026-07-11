@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -265,7 +265,7 @@ class TacticalSidebar(QFrame):
             layout.addWidget(item)
 
         layout.addStretch()
-        self.status = QLabel("●")
+        self.status = QLabel("â—")
         self.status.setAlignment(Qt.AlignCenter)
         self.status.setStyleSheet("color:#59D37A; font-size:18px; background:transparent;")
         layout.addWidget(self.status)
@@ -273,7 +273,7 @@ class TacticalSidebar(QFrame):
 
     def _normalize_theme(self, key: str) -> str:
         key = (key or "gold").strip().lower()
-        aliases = {"dune": "gold", "atreides": "green", "harkonnen": "red", "spice": "purple"}
+        aliases = {"dune": "gold", "atreides": "green", "harkonnen": "red", "spice": "purple", "spiced": "spiced_up", "spiced up": "spiced_up"}
         return aliases.get(key, key if key in TACTICAL_THEMES else "gold")
 
     def _on_item_clicked(self, key: str) -> None:

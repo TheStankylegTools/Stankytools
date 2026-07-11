@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -29,6 +29,7 @@ THEMES: dict[str, Theme] = {
     "gold": Theme("gold", "Gold", "#ffcb45", "#17130d", "#241d12", "#2d2415"),
     "purple": Theme("purple", "Purple", "#d26cff", "#140f1b", "#22172d", "#2b1d39"),
     "red": Theme("red", "Red", "#ff5555", "#190d0d", "#261414", "#301818"),
+    "spiced_up": Theme("spiced_up", "Spiced Up", "#FF00D6", "#05000C", "#30004E", "#130022"),
 }
 
 LEGACY_THEME_ALIASES = {
@@ -36,6 +37,8 @@ LEGACY_THEME_ALIASES = {
     "dune": "gold",
     "spice": "purple",
     "harkonnen": "red",
+    "spiced": "spiced_up",
+    "spiced up": "spiced_up",
 }
 
 
@@ -78,19 +81,24 @@ def theme_color_map(theme_key: str | None) -> dict[str, str]:
         "panel_hover": mixed_hex(theme.panel, theme.accent, 0.10),
         "text": theme.text,
         "muted": theme.muted,
-        "glow": hex_to_rgba(theme.accent, 0.18),
-        "accent_soft": hex_to_rgba(theme.accent, 0.48),
-        "accent_faint": hex_to_rgba(theme.accent, 0.14),
-        "border": hex_to_rgba(theme.accent, 0.24),
-        "hover": hex_to_rgba(theme.accent, 0.18),
-        "shadow": hex_to_rgba(theme.accent, 0.22),
-        "shadow_strong": hex_to_rgba(theme.accent, 0.38),
+        "glow": hex_to_rgba(theme.accent, 0.42 if theme.key == "spiced_up" else 0.18),
+        "accent_soft": hex_to_rgba(theme.accent, 0.82 if theme.key == "spiced_up" else 0.48),
+        "accent_faint": hex_to_rgba(theme.accent, 0.34 if theme.key == "spiced_up" else 0.14),
+        "border": hex_to_rgba(theme.accent, 0.58 if theme.key == "spiced_up" else 0.24),
+        "hover": hex_to_rgba(theme.accent, 0.44 if theme.key == "spiced_up" else 0.18),
+        "shadow": hex_to_rgba(theme.accent, 0.55 if theme.key == "spiced_up" else 0.22),
+        "shadow_strong": hex_to_rgba(theme.accent, 0.82 if theme.key == "spiced_up" else 0.38),
         "input": mixed_hex(theme.background, theme.panel, 0.52),
         "primary_text": "#11130d" if theme.key in {"green", "gold"} else "#fff8ff",
         "danger": "#ff5555",
         "warning": "#ffcb45",
         "success": "#89ff45",
         "info": theme.accent,
+        "danger_soft": hex_to_rgba("#ff5555", 0.20),
+        "success_soft": hex_to_rgba("#89ff45", 0.18),
+        "warning_soft": hex_to_rgba("#ffcb45", 0.18),
+        "accent_secondary": "#00F6FF" if theme.key == "spiced_up" else theme.accent,
+        "accent_tertiary": "#B7FF00" if theme.key == "spiced_up" else theme.accent,
     }
 
 

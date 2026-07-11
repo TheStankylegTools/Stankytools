@@ -1,0 +1,3 @@
+Added reusable futuristic widget module: stanky_market/ui_modern_widgets.py
+Import these widgets into app.py and replace existing StatCard/QFrame dashboard containers.
+Backend functionality and signals should remain unchanged during integration.

@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QListWidget,
     QListWidgetItem,
+    QSizePolicy,
 )
 
 from . import store
@@ -852,98 +853,245 @@ def build_building_page(window) -> QWidget:
     return build_blueprints_page(window)
 
 def build_timers_page(window) -> QWidget:
-    store.seed_samples()
-    page, layout = window._page_shell("Timers", "Stormsign-inspired Arrakis timer board.")
-    notice = QLabel("Timers are manual and adjustable. They do not read game memory or automate gameplay.")
-    notice.setObjectName("MutedText")
-    notice.setWordWrap(True)
-    layout.addWidget(notice)
+    """Build one unified timer console with five lab timers and Sandstorm."""
+    page, layout = window._page_shell(
+        "Timers",
+        "Track five laboratories and the next sandstorm from one console.",
+    )
 
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setFrameShape(QFrame.NoFrame)
-    inner = QWidget()
-    timer_grid = QGridLayout(inner)
-    timer_grid.setContentsMargins(0, 0, 0, 0)
-    timer_grid.setHorizontalSpacing(14)
-    timer_grid.setVerticalSpacing(14)
-    scroll.setWidget(inner)
-    layout.addWidget(scroll, 1)
+    timer_console = QFrame()
+    timer_console.setObjectName("UnifiedTimerConsole")
+    console_layout = QVBoxLayout(timer_console)
+    console_layout.setContentsMargins(24, 22, 24, 24)
+    console_layout.setSpacing(16)
 
-    active: dict[int, float] = {}
-    labels: dict[int, QLabel] = {}
+    console_header = QHBoxLayout()
+    title = QLabel("TIMER CONSOLE")
+    title.setObjectName("SectionTitle")
+    subtitle = QLabel("Five labs and one sandstorm timer")
+    subtitle.setObjectName("MutedText")
+    console_header.addWidget(title)
+    console_header.addStretch(1)
+    console_header.addWidget(subtitle)
+    console_layout.addLayout(console_header)
+
+    divider = QFrame()
+    divider.setFrameShape(QFrame.HLine)
+    divider.setObjectName("TimerDivider")
+    console_layout.addWidget(divider)
+
+    rows_container = QWidget()
+    rows_layout = QVBoxLayout(rows_container)
+    rows_layout.setContentsMargins(0, 0, 0, 0)
+    rows_layout.setSpacing(10)
+    console_layout.addWidget(rows_container)
+
+    active: dict[str, float] = {}
+    now = time.time()
+    for persisted_key in ["lab_1", "lab_2", "lab_3", "lab_4", "lab_5", "sandstorm"]:
+        try:
+            persisted_end = float(store.get_setting(f"timer_{persisted_key}_end", "0") or 0)
+        except Exception:
+            persisted_end = 0
+        if persisted_end > now:
+            active[persisted_key] = persisted_end
+    status_labels: dict[str, QLabel] = {}
+    duration_inputs: dict[str, QSpinBox] = {}
+    name_inputs: dict[str, QLineEdit] = {}
 
     def fmt(seconds: int) -> str:
         seconds = max(0, int(seconds))
-        return f"{seconds//60:02d}:{seconds%60:02d}"
+        hours, remainder = divmod(seconds, 3600)
+        minutes, secs = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
-    def refresh():
-        while timer_grid.count():
-            item = timer_grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-        labels.clear()
-        rows = list(store.list_timers())
-        columns = 2
-        for idx, row in enumerate(rows):
-            card = _card(
-                row["name"],
-                f"Type: {row['timer_type']}  •  Duration: {fmt(row['duration_seconds'])}\n{row['notes'] or ''}",
-                150,
+    def saved_minutes(key: str, default: int) -> int:
+        try:
+            return max(
+                1,
+                min(
+                    1440,
+                    int(store.get_setting(f"timer_{key}_minutes", str(default)) or default),
+                ),
             )
-            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            controls = QHBoxLayout()
-            status = QLabel("Ready")
-            status.setObjectName("CardValue")
-            start_btn = QPushButton("Start")
-            reset_btn = QPushButton("Reset")
-            start_btn.clicked.connect(lambda checked=False, r=row: start_timer(r["id"], int(r["duration_seconds"])))
-            reset_btn.clicked.connect(lambda checked=False, r=row: reset_timer(r["id"]))
-            controls.addWidget(status)
-            controls.addStretch(1)
-            controls.addWidget(start_btn)
-            controls.addWidget(reset_btn)
-            card.layout().addLayout(controls)
-            labels[row["id"]] = status
-            timer_grid.addWidget(card, idx // columns, idx % columns)
-        timer_grid.setColumnStretch(0, 1)
-        timer_grid.setColumnStretch(1, 1)
-        timer_grid.setRowStretch((len(rows) + columns - 1) // columns, 1)
+        except Exception:
+            return default
 
-    def start_timer(timer_id: int, duration: int):
-        active[timer_id] = time.time() + duration
-        window.notify("Timer Started", "Arrakis timer is running.", "success")
+    def saved_name(key: str, default: str) -> str:
+        value = store.get_setting(f"timer_{key}_name", default)
+        return str(value or default)
 
-    def reset_timer(timer_id: int):
-        active.pop(timer_id, None)
-        label = labels.get(timer_id)
-        if label is not None:
+    def save_timer(key: str) -> None:
+        duration = duration_inputs.get(key)
+        name = name_inputs.get(key)
+        if duration is not None:
+            store.set_setting(f"timer_{key}_minutes", str(duration.value()))
+        if name is not None:
+            fallback = "Sandstorm" if key == "sandstorm" else f"Laboratory {key.split('_')[-1]}"
+            store.set_setting(
+                f"timer_{key}_name",
+                name.text().strip() or fallback,
+            )
+
+    def start_timer(key: str) -> None:
+        duration = duration_inputs.get(key)
+        if duration is None:
+            return
+        save_timer(key)
+        seconds = int(duration.value()) * 60
+        active[key] = time.time() + seconds
+        store.set_setting(f"timer_{key}_end", str(active[key]))
+        status = status_labels.get(key)
+        if status is not None:
             try:
-                label.setText("Ready")
+                status.setText(fmt(seconds))
+                status.setProperty("running", True)
+                status.style().unpolish(status)
+                status.style().polish(status)
             except RuntimeError:
-                labels.pop(timer_id, None)
+                status_labels.pop(key, None)
 
-    def tick():
+        name = name_inputs.get(key)
+        timer_name = name.text().strip() if name is not None else "Timer"
+        window.notify(
+            "Timer Started",
+            f"{timer_name or 'Timer'} is now running.",
+            "success",
+        )
+
+    def reset_timer(key: str) -> None:
+        active.pop(key, None)
+        store.set_setting(f"timer_{key}_end", "0")
+        status = status_labels.get(key)
+        if status is not None:
+            try:
+                status.setText("Ready")
+                status.setProperty("running", False)
+                status.style().unpolish(status)
+                status.style().polish(status)
+            except RuntimeError:
+                status_labels.pop(key, None)
+
+    def add_timer_row(
+        key: str,
+        default_name: str,
+        default_minutes: int,
+        *,
+        sandstorm: bool = False,
+    ) -> None:
+        row = QFrame()
+        row.setObjectName("SandstormTimerRow" if sandstorm else "LabTimerRow")
+        row.setProperty("timerType", "sandstorm" if sandstorm else "lab")
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(16, 12, 16, 12)
+        row_layout.setSpacing(12)
+
+        name = QLineEdit(saved_name(key, default_name))
+        name.setObjectName("TimerNameInput")
+        name.setMaxLength(40)
+        name.setMinimumWidth(190)
+        name.editingFinished.connect(lambda k=key: save_timer(k))
+
+        duration = QSpinBox()
+        duration.setObjectName("TimerDurationInput")
+        duration.setRange(1, 1440)
+        duration.setSuffix(" min")
+        duration.setValue(saved_minutes(key, default_minutes))
+        duration.setMinimumWidth(112)
+        duration.valueChanged.connect(lambda value, k=key: save_timer(k))
+
+        status = QLabel("Ready")
+        status.setObjectName("TimerRowStatus")
+        status.setAlignment(Qt.AlignCenter)
+        status.setMinimumWidth(112)
+        status.setProperty("running", False)
+
+        start_button = QPushButton("Start")
+        start_button.setObjectName("PrimaryButton")
+        start_button.setMinimumWidth(90)
+        reset_button = QPushButton("Reset")
+        reset_button.setMinimumWidth(90)
+
+        start_button.clicked.connect(lambda checked=False, k=key: start_timer(k))
+        reset_button.clicked.connect(lambda checked=False, k=key: reset_timer(k))
+
+        row_layout.addWidget(name, 1)
+        row_layout.addWidget(duration)
+        row_layout.addWidget(status)
+        row_layout.addWidget(start_button)
+        row_layout.addWidget(reset_button)
+
+        rows_layout.addWidget(row)
+        name_inputs[key] = name
+        duration_inputs[key] = duration
+        status_labels[key] = status
+
+    for slot in range(1, 6):
+        add_timer_row(
+            f"lab_{slot}",
+            f"Laboratory {slot}",
+            45,
+        )
+
+    add_timer_row(
+        "sandstorm",
+        "Sandstorm",
+        30,
+        sandstorm=True,
+    )
+
+    rows_layout.addStretch(1)
+    layout.addWidget(timer_console, 1)
+
+    for active_key, active_end in active.items():
+        active_label = status_labels.get(active_key)
+        if active_label is not None:
+            active_label.setText(fmt(int(active_end - time.time())))
+            active_label.setProperty("running", True)
+            active_label.style().unpolish(active_label)
+            active_label.style().polish(active_label)
+
+    def tick() -> None:
         now = time.time()
-        for timer_id, end in list(active.items()):
-            remaining = int(end - now)
-            label = labels.get(timer_id)
+        for key, end_time in list(active.items()):
+            remaining = int(end_time - now)
+            label = status_labels.get(key)
             if label is not None:
                 try:
                     label.setText(fmt(remaining))
                 except RuntimeError:
-                    labels.pop(timer_id, None)
-            if remaining <= 0:
-                active.pop(timer_id, None)
-                window.notify("Timer Complete", "An Arrakis timer finished.", "info")
+                    status_labels.pop(key, None)
 
-    refresh()
+            if remaining <= 0:
+                active.pop(key, None)
+                store.set_setting(f"timer_{key}_end", "0")
+                if label is not None:
+                    try:
+                        label.setText("Ready")
+                        label.setProperty("running", False)
+                        label.style().unpolish(label)
+                        label.style().polish(label)
+                    except RuntimeError:
+                        status_labels.pop(key, None)
+
+                name = name_inputs.get(key)
+                timer_name = name.text().strip() if name is not None else "Timer"
+                window.notify(
+                    "Timer Complete",
+                    f"{timer_name or 'Timer'} is ready.",
+                    "info",
+                )
+
     timer = QTimer(page)
     timer.setInterval(1000)
     timer.timeout.connect(tick)
     timer.start()
+
     page._companion_timer = timer
+    page._timer_active = active
+    page._timer_status_labels = status_labels
+    page._timer_duration_inputs = duration_inputs
+    page._timer_name_inputs = name_inputs
     return page
 
 

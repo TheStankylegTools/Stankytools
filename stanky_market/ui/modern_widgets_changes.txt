@@ -1,0 +1,22 @@
+
+# Replace these values inside modern_widgets.py
+
+# Change:
+# QFrame#ModernStatCard {
+#     min-height: 108px;
+#     max-height: 124px;
+# }
+
+# To:
+
+QFrame#ModernStatCard {
+    min-height: 138px;
+    max-height: 158px;
+}
+
+# Also increase the value label size container spacing if needed:
+
+QFrame#ModernStatCard QLabel#StatValue {
+    font-size: 40px;
+    padding-bottom: 4px;
+}

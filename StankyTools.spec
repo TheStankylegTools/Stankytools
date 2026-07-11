@@ -38,8 +38,10 @@ datas += include_if_exists(
     "assets/catalog",
 )
 
-# Do not add stanky_market/assets/icons here. That directory is not present
-# in the repository and caused the GitHub Actions PyInstaller failure.
+datas += include_if_exists(
+    "stanky_market/assets/icons",
+    "stanky_market/assets/icons",
+)
 
 hiddenimports = collect_submodules("PySide6")
 

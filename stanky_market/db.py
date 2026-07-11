@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
@@ -1740,7 +1740,7 @@ def replace_local_guild_event_id(local_remote_id: str, remote_row: dict, guild_c
 
 def _normal_event_status(value: str) -> str:
     status = (value or "").strip().lower()
-    if status in {"attending", "interested"}:
+    if status in {"attending", "interested", "not_going"}:
         return status
     return ""
 
@@ -1880,7 +1880,7 @@ def set_local_event_response(event_id: str, guild_code: str, display_name: str, 
     conn = connect()
     try:
         _ensure_event_attendance_columns(conn)
-        if status in {"attending", "interested"}:
+        if status in {"attending", "interested", "not_going"}:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO guild_event_attendance_cache(event_id, guild_code, display_name, status, created_at, sync_pending)

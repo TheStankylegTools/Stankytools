@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -6,7 +6,7 @@ from ..paths import asset_dir
 
 PACKAGE_ASSET_ROOT = Path(__file__).resolve().parents[1] / "assets"
 SHARED_ASSET_ROOT = asset_dir()
-THEME_KEYS = {"dune", "atreides", "harkonnen", "spice"}
+THEME_KEYS = {"dune", "atreides", "harkonnen", "spice", "spiced_up"}
 
 
 def normalize_theme(theme: str | None) -> str:
